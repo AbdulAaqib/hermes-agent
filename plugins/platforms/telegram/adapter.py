@@ -4726,6 +4726,21 @@ class TelegramAdapter(BasePlatformAdapter):
     def _caption_1024(caption: Optional[str]) -> Optional[str]:
         return caption[:1024] if caption else None
 
+    def _media_caption_kwargs(self, caption: Optional[str]) -> Dict[str, Any]:
+        """Caption kwargs for photo/video/document/animation sends: MarkdownV2-formatted caption
+        with parse_mode when it fits the 1024-char cap, else plain truncated caption. Without
+        parse_mode the Bot API renders formatting markers (``_italic_`` etc.) literally — the
+        caption-merge path made this visible as raw underscores in photo captions."""
+        if not caption:
+            return {}
+        try:
+            formatted = self.format_message(caption)
+            if utf16_len(formatted) <= 1024:
+                return {"caption": formatted, "parse_mode": ParseMode.MARKDOWN_V2}
+        except Exception:
+            logger.debug("[%s] media caption MarkdownV2 formatting failed; plain caption", self.name, exc_info=True)
+        return {"caption": caption[:1024]}
+
     async def _send_voice_bubble(self, audio_file, chat_id, reply_to, metadata, caption, duration_secs):
         """sendVoice with caption variants: MarkdownV2 when it fits 1024 chars, plain fallback when the
         Bot API rejects the entities; anything else is a real error."""
@@ -4916,7 +4931,7 @@ class TelegramAdapter(BasePlatformAdapter):
         try:
             return await self._send_local_file(
                 "Image", actual_path, chat_id, reply_to, metadata, "photo",
-                lambda f: {"photo": f, "caption": self._caption_1024(caption)}, _photo_failed)
+                lambda f: {"photo": f, **self._media_caption_kwargs(caption)}, _photo_failed)
         finally:
             if compressed:
                 with contextlib.suppress(OSError):
@@ -4950,7 +4965,7 @@ class TelegramAdapter(BasePlatformAdapter):
         """Send a document/file natively as a Telegram file attachment."""
         return await self._send_local_file(
             "File", file_path, chat_id, reply_to, metadata, "document",
-            lambda f: {"document": f, "filename": file_name or os.path.basename(file_path), "caption": self._caption_1024(caption)},
+            lambda f: {"document": f, "filename": file_name or os.path.basename(file_path), **self._media_caption_kwargs(caption)},
             lambda e: self._warn_then(
                 "document", e, super(
                     TelegramAdapter, self,
@@ -4962,7 +4977,7 @@ class TelegramAdapter(BasePlatformAdapter):
         """Send a video natively as a Telegram video message."""
         return await self._send_local_file(
             "Video", video_path, chat_id, reply_to, metadata, "video",
-            lambda f: {"video": f, "caption": self._caption_1024(caption)},
+            lambda f: {"video": f, **self._media_caption_kwargs(caption)},
             lambda e: self._warn_then(
                 "video", e, super(TelegramAdapter, self).send_video(chat_id, video_path, caption, reply_to, metadata=metadata),
             ))
@@ -4977,10 +4992,11 @@ class TelegramAdapter(BasePlatformAdapter):
         if not is_safe_url(image_url):
             logger.warning("[%s] Blocked unsafe image URL (SSRF protection)", self.name)
             return await super().send_image(chat_id, image_url, caption, reply_to, metadata=metadata)
-        photo_caption = self._caption_1024(caption)
+        photo_caption_kwargs = self._media_caption_kwargs(caption)
+        photo_caption = photo_caption_kwargs.get("caption")
         try:
             msg = await self._send_media(
-                self._bot.send_photo, chat_id, reply_to, metadata, "URL photo", photo=image_url, caption=photo_caption)
+                self._bot.send_photo, chat_id, reply_to, metadata, "URL photo", photo=image_url, **photo_caption_kwargs)
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
             logger.warning(
@@ -5008,7 +5024,7 @@ class TelegramAdapter(BasePlatformAdapter):
         try:
             msg = await self._send_media(
                 self._bot.send_animation, chat_id, reply_to, metadata, "animation", animation=animation_url,
-                caption=self._caption_1024(caption))
+                **self._media_caption_kwargs(caption))
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
             logger.error(
