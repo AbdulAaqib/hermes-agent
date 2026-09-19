@@ -1404,6 +1404,61 @@ def _delete_spans(text: str, spans: list) -> str:
     return "".join(chars)
 
 
+# First line-fragment of a MEDIA tag whose path may continue on the following lines.
+_MEDIA_WRAP_FIRST_FRAGMENT_RE = re.compile(
+    r'''[`"'*_]{0,3}MEDIA:\s*'''
+    r'''(?P<frag>(?:~/|/|[A-Za-z]:[/\\])[^\s`"']*)''',
+    re.IGNORECASE)
+
+# Bound on how many continuation lines a broken path may span (a display formatter
+# splitting at underscore beats produces 2-3).
+_MEDIA_WRAP_MAX_FRAGMENTS = 6
+
+
+def _rejoin_wrapped_media_paths(text: str) -> str:
+    """Rejoin a ``MEDIA:<path>`` tag whose path was broken across lines, when the
+    rejoined path is deliverable.
+
+    Display formatters that treat ``_…_`` as italic spans split long paths at
+    underscore boundaries (``runpod_20260919_x.jpeg`` → ``runpod`` / ``_20260919_`` /
+    ``x.jpeg``). The broken tag then matches no extraction pattern: it leaks into the
+    chat as literal text and the file never delivers. Only a fragment chain that
+    ``validate_media_delivery_path`` accepts is rejoined — unverifiable text is left
+    exactly as written (undeliverable paths stay visible, as everywhere else).
+    """
+    if "MEDIA:" not in text or "\n" not in text:
+        return text
+    lines = text.split("\n")
+    out: list = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = _MEDIA_WRAP_FIRST_FRAGMENT_RE.search(line)
+        fragment = match.group("frag") if match else ""
+        if not fragment or validate_media_delivery_path(_normalize_media_tag_path(fragment)):
+            out.append(line)
+            i += 1
+            continue
+        joined = fragment
+        fixed = None
+        consumed = 0
+        for j in range(i + 1, min(i + 1 + _MEDIA_WRAP_MAX_FRAGMENTS, len(lines))):
+            piece = lines[j].strip()
+            if not piece or any(ch.isspace() for ch in piece) or "MEDIA:" in piece:
+                break
+            joined += piece
+            if validate_media_delivery_path(_normalize_media_tag_path(joined)):
+                fixed, consumed = joined, j - i
+                break
+        if fixed is None:
+            out.append(line)
+            i += 1
+            continue
+        out.append(line[:match.start("frag")] + fixed + line[match.end("frag"):])
+        i += consumed + 1
+    return "\n".join(out)
+
+
 def _strip_media_tag_directives(text: str) -> str:
     """Remove MEDIA: tags and [[audio_as_voice]] / [[as_document]] markers so they never render
     as text (backstop after ``extract_media``). Protected spans are mask-located only — tags
@@ -1415,6 +1470,7 @@ def _strip_media_tag_directives(text: str) -> str:
     if not text or not _has_media_directives(text):
         return text
     cleaned = text.replace("[[audio_as_voice]]", "").replace("[[as_document]]", "")
+    cleaned = _rejoin_wrapped_media_paths(cleaned)
     return _delete_spans(cleaned, _real_media_tag_spans(_mask_media_scan_text(cleaned)))
 
 
@@ -3000,6 +3056,10 @@ class BasePlatformAdapter(ABC):
         media = []
         has_voice_tag = "[[audio_as_voice]]" in content
         cleaned = content.replace("[[audio_as_voice]]", "").replace("[[as_document]]", "")
+        # A display formatter may have broken the path across lines at underscores; rejoin
+        # it first (deliverability-gated) so the tag extracts instead of leaking as text.
+        cleaned = _rejoin_wrapped_media_paths(cleaned)
+        content = cleaned
         # Scan a masked copy so example/stored MEDIA paths (code, quotes, JSON values) are never
         # delivered; dedupe on the expanded path so a file referenced twice uploads once.
         scan_content = _mask_media_scan_text(content)
