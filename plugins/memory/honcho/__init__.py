@@ -32,6 +32,16 @@ from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
 
+# Failure hook for the composite-provider dead-letter queue (mnemosyne).
+# Signature: hook(payload: dict) -> None; payload = {"kind": "honcho_dream", "session_key": str}.
+_DREAM_FAILURE_HOOK = None
+
+
+def set_dream_failure_hook(hook) -> None:
+    """Register (or clear, with None) the dream-trigger DLQ hook."""
+    global _DREAM_FAILURE_HOOK
+    _DREAM_FAILURE_HOOK = hook
+
 
 # Gateway-internal notifications arrive through the same user-role channel as genuine
 # user messages; they are execution metadata and must never become durable memory.
@@ -892,9 +902,15 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
             logger.debug("Honcho session-end flush failed: %s", e)
         if getattr(self._config, "dreams_enabled", True):
             try:
-                self._manager.schedule_session_dream(self._session_key)
+                ok = self._manager.schedule_session_dream(self._session_key)
             except Exception as e:
                 logger.debug("Honcho session-end dream scheduling failed: %s", e)
+                ok = False
+            if not ok and _DREAM_FAILURE_HOOK is not None:
+                try:
+                    _DREAM_FAILURE_HOOK({"kind": "honcho_dream", "session_key": self._session_key})
+                except Exception:
+                    logger.debug("Honcho dream failure hook raised (ignored)", exc_info=True)
 
     # ----- Tools -----
 

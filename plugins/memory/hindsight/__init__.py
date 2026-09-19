@@ -48,6 +48,19 @@ from .settings import (
 
 logger = logging.getLogger(__name__)
 
+# Failure hook for the composite-provider dead-letter queue (mnemosyne).
+# Signature: hook(payload: dict) -> None. None = no consumer; the writer
+# loop behaves exactly as before. Fail-open by contract: hook exceptions
+# are swallowed.
+_RETAIN_FAILURE_HOOK = None
+
+
+def set_retain_failure_hook(hook) -> None:
+    """Register (or clear, with None) the retain-failure DLQ hook."""
+    global _RETAIN_FAILURE_HOOK
+    _RETAIN_FAILURE_HOOK = hook
+
+
 _LOCAL_MODES = {"local", "local_embedded"}
 _RETAIN_CONTEXT_DEFAULT = "conversation between Hermes Agent and the User"
 
@@ -346,6 +359,8 @@ class HindsightMemoryProvider(MemoryProvider):
         self._retain_queue: queue.Queue = queue.Queue()
         self._writer_thread: threading.Thread | None = None
         self._sync_thread = None  # legacy alias external callers may join; points at the writer
+        self._hindsight_ready = True  # optimistic until the first bounded probe says otherwise
+        self._readiness_thread = None
         self._shutting_down = threading.Event()
         self._atexit_registered = False
         self._retain_tags: List[str] = []
@@ -428,6 +443,7 @@ class HindsightMemoryProvider(MemoryProvider):
             {"key": "llm_model", "description": "LLM model", "default": "gpt-4o-mini", "default_from": {"field": "llm_provider", "map": _PROVIDER_DEFAULT_MODELS}, "when": {"mode": "local_embedded"}},
             {"key": "bank_id", "description": "Memory bank name (static fallback when bank_id_template is unset)", "default": "hermes"},
             {"key": "bank_id_template", "description": "Optional template to derive bank_id dynamically. Placeholders: {profile}, {workspace}, {platform}, {user}, {session}. Example: hermes-{profile}", "default": ""},
+            {"key": "bank_id_per_profile", "description": "Derive per-profile banks (hermes-{profile}) for non-default profiles; the default profile keeps bank_id so existing facts are not orphaned", "default": False},
             {"key": "bank_mission", "description": "Mission/purpose description for the memory bank"},
             {"key": "bank_retain_mission", "description": "Custom extraction prompt for memory retention"},
             {"key": "recall_budget", "description": "Recall thoroughness", "default": "mid", "choices": ["low", "mid", "high"]},
@@ -457,6 +473,7 @@ class HindsightMemoryProvider(MemoryProvider):
             {"key": "timeout", "description": "API request timeout in seconds", "default": _DEFAULT_TIMEOUT},
             {"key": "idle_timeout", "description": "Embedded daemon idle timeout in seconds (0 disables auto-shutdown)", "default": _DEFAULT_IDLE_TIMEOUT, "when": {"mode": "local_embedded"}},
             {"key": "port_health_grace_timeout", "description": "Seconds to wait for a slow daemon /health before treating it as stale (raise on busy/low-resource hosts; blank uses the 30s default)", "default": "", "when": {"mode": "local_embedded"}},
+            {"key": "handshake_timeout_ms", "description": "Bounded readiness ping timeout in milliseconds at provider init (blank/0 disables the probe)", "default": 300},
         ]
 
     # -- client -------------------------------------------------------------
@@ -556,6 +573,12 @@ class HindsightMemoryProvider(MemoryProvider):
                 job()
             except Exception as exc:
                 logger.warning("Hindsight retain failed: %s", exc, exc_info=True)
+                hook = _RETAIN_FAILURE_HOOK
+                if hook is not None:
+                    try:
+                        hook(getattr(job, "_dlq_payload", None) or {"kind": "hindsight_retain", "error": str(exc)})
+                    except Exception:
+                        logger.debug("Hindsight retain failure hook raised (ignored)", exc_info=True)
             finally:
                 self._retain_queue.task_done()
 
@@ -702,6 +725,10 @@ class HindsightMemoryProvider(MemoryProvider):
         self._apply_connection_settings(cfg)
         self._apply_retain_settings(cfg)
         self._apply_recall_settings(cfg)
+        timeout_ms = int(cfg.get("handshake_timeout_ms", 300) or 0)
+        if timeout_ms > 0 and not self._probe_daemon_readiness(timeout_ms):
+            self._hindsight_ready = False
+            self._start_readiness_retry()
 
         client_version = "unknown"
         with contextlib.suppress(Exception):
@@ -722,6 +749,45 @@ class HindsightMemoryProvider(MemoryProvider):
         if self._mode == "local_embedded":
             self._start_embedded_daemon()
 
+    def _probe_daemon_readiness(self, timeout_ms: int) -> bool:
+        """Bounded GET {api_url}/health — the 300 ms bootstrap gate (Obj 13.3).
+        Only meaningful for local daemon modes; cloud returns True without probing."""
+        if self._mode not in ("local_external", "local_embedded") or not self._api_url:
+            return True
+        import urllib.request
+        url = self._api_url.rstrip("/") + "/health"
+        try:
+            with urllib.request.urlopen(url, timeout=max(timeout_ms, 1) / 1000.0) as resp:
+                return 200 <= resp.status < 500
+        except Exception as exc:
+            logger.info("Hindsight readiness probe failed (%s); marking hindsight_ready=False", exc)
+            return False
+
+    def _start_readiness_retry(self) -> None:
+        """Background re-probe: flips _hindsight_ready back to True and resets the
+        client once the daemon answers. Bounded to ~5 min so a permanently dead
+        daemon doesn't leak a thread; each pass reuses the recreate-once logic by
+        clearing self._client so the next call rebuilds against the live daemon."""
+        if self._readiness_thread is not None and self._readiness_thread.is_alive():
+            return
+
+        def _retry() -> None:
+            deadline = time.monotonic() + 300.0
+            while time.monotonic() < deadline and not self._shutting_down.is_set():
+                time.sleep(5.0)
+                try:
+                    timeout_ms = int(self._config.get("handshake_timeout_ms", 300) or 300)
+                    if self._probe_daemon_readiness(timeout_ms):
+                        self._hindsight_ready = True
+                        self._client = None
+                        logger.info("Hindsight daemon reachable again; hindsight_ready=True")
+                        return
+                except Exception:
+                    logger.debug("Hindsight readiness retry failed", exc_info=True)
+
+        self._readiness_thread = spawn_context_thread(_retry, name="hindsight-readiness")
+        self._readiness_thread.start()
+
     def _apply_connection_settings(self, cfg: dict) -> None:
         """Endpoint, bank and mode selectors from *cfg* (env fallbacks where documented)."""
         self._api_key = _cloud_api_key(cfg)
@@ -731,6 +797,13 @@ class HindsightMemoryProvider(MemoryProvider):
 
         banks = cfg_get(cfg, "banks", "hermes", default={})
         self._bank_id_template = cfg.get("bank_id_template", "") or ""
+        # Obj 17.1: opt-in per-profile banks. The DEFAULT profile keeps the
+        # legacy shared bank ("hermes") so its existing facts stay live; only
+        # non-default profiles get a derived bank "hermes-{profile}".
+        if not self._bank_id_template and cfg.get("bank_id_per_profile"):
+            profile = (self._agent_identity or "").strip()
+            if profile and profile not in ("default", "hermes"):
+                self._bank_id_template = "hermes-{profile}"
         self._bank_id = _resolve_bank_id_template(
             self._bank_id_template,
             fallback=cfg.get("bank_id") or banks.get("bankId", "hermes"),
@@ -1032,6 +1105,12 @@ class HindsightMemoryProvider(MemoryProvider):
                 self._track_retain_ops(resp, bank_id)
             logger.debug("Hindsight %s succeeded", label)
 
+        _job._dlq_payload = {
+            "kind": "hindsight_retain",
+            "content": content,
+            "context": retain_context,
+            "tags": list(tags) if tags else None,
+        }
         return _job
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:

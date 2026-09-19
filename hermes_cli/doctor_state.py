@@ -6,7 +6,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from hermes_cli.doctor_report import (
-    Finding, _fail_and_issue, _section, check_bool, check_info, check_ok, check_warn, doctor_check, ensure_dir,
+    Finding, _fail_and_issue, _section, check_bool, check_fail, check_info, check_ok, check_warn, doctor_check, ensure_dir,
     warn_on_error,
 )
 from hermes_cli.sizefmt import format_bytes as _human_bytes
@@ -379,8 +379,15 @@ _MEMORY_PROVIDER_CHECKS = {
 }
 
 
-def _memory_provider_generic(name: str) -> None:
-    """Generic check for other memory providers (openviking, hindsight, etc.)."""
+def _memory_provider_generic(name: str, issues: list | None = None) -> None:
+    """Generic check for other memory providers (openviking, hindsight, mnemosyne, etc.).
+
+    Providers may additionally expose a ``doctor_checks()`` capability
+    returning health rows shaped ``{"status": "ok"|"warn"|"fail", "label",
+    "detail", "fix"}`` (the plugin hook API has no doctor/health hook, so the
+    capability method is the contribution surface). Rows render color-coded;
+    fail rows with a ``fix`` land in doctor's remediation list (Obj 19.3).
+    Fail-open: a broken sweep is a warn row, never a doctor crash."""
     from plugins.memory import load_memory_provider
     _provider = load_memory_provider(name)
     if _provider and _provider.is_available():
@@ -389,6 +396,34 @@ def _memory_provider_generic(name: str) -> None:
         check_warn(f"{name} configured but not available", "run: hermes memory status")
     else:
         check_warn(f"{name} plugin not found", "run: hermes memory setup")
+    if _provider is None:
+        return
+    checks = getattr(_provider, "doctor_checks", None)
+    if not callable(checks):
+        return
+    try:
+        rows = checks() or []
+    except Exception as _e:
+        check_warn(f"{name} health sweep failed", str(_e))
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "").lower()
+        label = str(row.get("label") or f"{name} check")
+        detail = str(row.get("detail") or "")
+        fix = str(row.get("fix") or "")
+        if status == "ok":
+            check_ok(label, detail)
+        elif status == "fail":
+            if fix and issues is not None:
+                _fail_and_issue(label, detail, fix, issues)
+            else:
+                check_fail(label, detail)
+        else:
+            check_warn(label, detail)
+        if fix and status != "fail":
+            check_info(f"fix: {fix}")
 
 
 @doctor_check()
@@ -400,7 +435,7 @@ def _check_memory_provider(should_fix: bool, f: Finding) -> None:
         return
     checker, missing_row, missing_issue, label = _MEMORY_PROVIDER_CHECKS.get(name, (None, None, None, name))
     try:
-        checker(f.issues) if checker else _memory_provider_generic(name)
+        checker(f.issues) if checker else _memory_provider_generic(name, f.issues)
     except ImportError as _e:
         if missing_row is None:
             check_warn(f"{label} check failed", str(_e))
