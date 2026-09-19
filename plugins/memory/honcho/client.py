@@ -289,6 +289,11 @@ def _connection_fields(look: _HostLookup, host: str, path: Path) -> dict[str, An
     }
 
 
+# Fresh installs get a bounded context injection; configs that predate the default keep
+# uncapped retrieval (migration guard, same pattern as observationMode below).
+_DEFAULT_CONTEXT_TOKENS = 2000
+
+
 def _behavior_fields(look: _HostLookup, explicitly_configured: bool) -> dict[str, Any]:
     """Resolve memory-behavior tuning fields (host block -> root -> defaults)."""
     raw_wf = look.pick("writeFrequency") or "async"
@@ -306,7 +311,19 @@ def _behavior_fields(look: _HostLookup, explicitly_configured: bool) -> dict[str
         "runtime_peer_prefix": look.string("runtimePeerPrefix"),
         "save_messages": look.pick_set("saveMessages", True),
         "write_frequency": write_frequency,
-        "context_tokens": look.parsed("contextTokens", int, None),
+        "context_tokens": look.parsed("contextTokens", int, None if explicitly_configured else _DEFAULT_CONTEXT_TOKENS),
+        # Session-level Honcho configuration (applied via session.set_configuration at setup).
+        # None leaves the server default in place; summaryEnabled=false turns summaries off.
+        "summary_enabled": look.pick_set("summaryEnabled", None),
+        "messages_per_short_summary": look.parsed("messagesPerShortSummary", int, None),
+        "messages_per_long_summary": look.parsed("messagesPerLongSummary", int, None),
+        # Dream lifecycle: schedule a consolidation dream at session end, and enable
+        # dreams in the session configuration.
+        "dreams_enabled": look.flag("dreams", default=True),
+        # Context retrieval tuning (session.context / peer.context calls); None = server default.
+        "search_top_k": look.parsed("searchTopK", int, None),
+        "search_max_distance": look.parsed("searchMaxDistance", float, None),
+        "max_conclusions": look.parsed("maxConclusions", int, None),
         "dialectic_reasoning_level": look.pick("dialecticReasoningLevel") or "low",
         "dialectic_dynamic": look.flag("dialecticDynamic", default=True),
         "dialectic_max_chars": look.parsed("dialecticMaxChars", int, 600),
@@ -360,7 +377,17 @@ class HonchoClientConfig:
     enabled: bool = False
     save_messages: bool = True
     write_frequency: str | int = "async"  # "async" | "turn" | "session" | every-N-turns int
-    context_tokens: int | None = None  # prefetch budget; None = uncapped
+    context_tokens: int | None = None  # prefetch budget; None = uncapped (legacy configs)
+    # Session-level Honcho configuration applied via session.set_configuration at setup.
+    # None means "leave the server default".
+    summary_enabled: bool | None = None
+    messages_per_short_summary: int | None = None
+    messages_per_long_summary: int | None = None
+    dreams_enabled: bool = True  # schedule a consolidation dream at session end
+    # Context retrieval tuning for session.context()/peer.context(); None = server default.
+    search_top_k: int | None = None
+    search_max_distance: float | None = None
+    max_conclusions: int | None = None
     # Dialectic (peer.chat) settings
     dialectic_reasoning_level: str = "low"  # minimal | low | medium | high | max
     dialectic_dynamic: bool = True  # model may override the level via honcho_reasoning

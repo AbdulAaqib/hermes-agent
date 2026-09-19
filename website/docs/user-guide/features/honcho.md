@@ -114,7 +114,14 @@ When pointing Hermes at a self-hosted Honcho server, `hermes honcho setup` (and 
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `contextTokens` | `null` (uncapped) | Token budget for auto-injected context per turn. Set to an integer (e.g. 1200) to cap. Truncates at word boundaries |
+| `contextTokens` | `2000` on new installs; uncapped for pre-existing configs (migration guard) | Token budget for auto-injected context per turn. Set to an integer (e.g. 1200) to cap. Truncates at word boundaries |
+| `summaryEnabled` | server default (on) | Let Honcho summarize sessions (applied via `session.set_configuration()` at setup) |
+| `messagesPerShortSummary` | server default | Messages between short summaries |
+| `messagesPerLongSummary` | server default | Messages between long summaries |
+| `dreams` | `true` | Schedule a consolidation dream (`schedule_dream`) at session end, after the message flush. `false` also disables dreams in the session configuration |
+| `searchTopK` | server default | Semantically relevant conclusions returned per context lookup |
+| `searchMaxDistance` | server default | Maximum semantic distance (0.0–1.0) for context search results |
+| `maxConclusions` | server default | Maximum conclusions included in a representation per lookup |
 | `contextCadence` | `1` | Minimum turns between `context()` API calls (base layer refresh) |
 | `dialecticCadence` | `2` | Minimum turns between `peer.chat()` LLM calls (dialectic layer). Recommended 1–5. In `tools` mode, irrelevant — model calls explicitly |
 | `dialecticDepth` | `1` | Number of `.chat()` passes per dialectic invocation. Clamped to 1–3 |
@@ -251,6 +258,9 @@ hermes honcho map             # Map current directory to a Honcho session name
 hermes honcho enable          # Enable Honcho for the active profile
 hermes honcho disable         # Disable Honcho for the active profile
 hermes honcho migrate         # Step-by-step migration guide from openclaw-honcho
+hermes honcho queue           # Async queue status (work units pending/running/done)
+hermes honcho delete-session  # Delete a session (async 202 cascade)
+hermes honcho delete-workspace # Delete the workspace (sessions first; 409 = still draining)
 ```
 
 ## Migrating from `hermes honcho`

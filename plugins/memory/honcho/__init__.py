@@ -143,6 +143,8 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         self._turn_count = 0
         # Author of the turn in flight, refreshed by on_turn_start.
         self._turn_author: dict[str, Any] = {}
+        # Platform the session initialized on (cli, telegram, ...); written into message metadata.
+        self._platform = "cli"
         # (config path, mtime_ns, size) -> identity_signature() values.
         self._identity_signature_memo: dict[tuple, dict[str, Any]] = {}
         # Injection audit. Off unless the logging key enables it: the record holds the user's representation.
@@ -222,6 +224,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         self._recall_generation = object()
         try:
             agent_context, platform = kwargs.get("agent_context", ""), kwargs.get("platform", "cli")
+            self._platform = str(platform or "cli")
             if agent_context in {"cron", "flush"} or platform == "cron":
                 logger.debug("Honcho skipped: cron/flush context (agent_context=%s, platform=%s)",
                              agent_context, platform)
@@ -811,10 +814,14 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
 
         def _sync():
             session = self._manager.get_or_create(session_key, **session_kwargs)
+            # Turn metadata rides on every message so Honcho-side tooling can attribute
+            # and filter turns (author peer, platform, turn number).
+            turn_meta: dict[str, Any] = {"platform": self._platform, "turn": self._turn_count}
+            user_meta = {**turn_meta, "author_peer_id": author_peer_id} if author_peer_id else turn_meta
             for chunk in self._chunk_message(clean_user_content, msg_limit) if clean_user_content else ():
-                session.add_message("user", chunk, author_peer_id=author_peer_id)
+                session.add_message("user", chunk, author_peer_id=author_peer_id, metadata=user_meta)
             for chunk in self._chunk_message(clean_assistant_content, msg_limit) if clean_assistant_content else ():
-                session.add_message("assistant", chunk)
+                session.add_message("assistant", chunk, metadata=turn_meta)
             # save() (not _flush_session) so writeFrequency batching is honored.
             self._manager.save(session)
 
@@ -867,7 +874,9 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
                                                   "honcho-memwrite", "Honcho memory mirror failed: %s")
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
-        """Flush all pending messages to Honcho on session end."""
+        """Flush all pending messages to Honcho on session end, then schedule a consolidation
+        dream (observer = AI peer, observed = user peer) so representations and peer cards
+        absorb the finished session. Both steps fail open."""
         if not self._writes_enabled() or not self._manager:
             return
         if not self._session_initialized and self._init_thread and self._init_thread.is_alive():
@@ -878,6 +887,11 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
             self._manager.flush_all()
         except Exception as e:
             logger.debug("Honcho session-end flush failed: %s", e)
+        if getattr(self._config, "dreams_enabled", True):
+            try:
+                self._manager.schedule_session_dream(self._session_key)
+            except Exception as e:
+                logger.debug("Honcho session-end dream scheduling failed: %s", e)
 
     # ----- Tools -----
 
@@ -911,14 +925,18 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         }
 
     def _tool_profile(self, args: dict) -> str:
+        from plugins.memory.honcho.session_context import PEER_CARD_MAX_FACTS
         peer = args.get("peer", "user")
         if card_update := args.get("card"):
             if refusal := self._bot_turn_write_refusal():
                 return refusal
+            truncated = len(card_update) > PEER_CARD_MAX_FACTS
             result = self._manager.set_peer_card(self._session_key, card_update, peer=peer)
             if result is None:
                 return tool_error("Failed to update peer card.")
-            return json.dumps({"result": f"Peer card updated ({len(result)} facts).", "card": result})
+            note = (f" (truncated to the first {PEER_CARD_MAX_FACTS} facts — Honcho cards hold at most "
+                    f"{PEER_CARD_MAX_FACTS})" if truncated else "")
+            return json.dumps({"result": f"Peer card updated ({len(result)} facts){note}.", "card": result})
         card = self._manager.get_peer_card(self._session_key, peer=peer)
         return json.dumps({"result": card} if card else self._empty_profile_hint(peer))
 

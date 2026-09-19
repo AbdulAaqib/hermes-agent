@@ -98,6 +98,13 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
             ("ai_observe_me", True), ("ai_observe_others", True),
         ):
             setattr(self, f"_{name}", getattr(config, name) if config else default)
+        # Newer knobs: getattr-with-default so hand-built configs lacking them stay valid.
+        for name, default in (
+            ("summary_enabled", None), ("messages_per_short_summary", None),
+            ("messages_per_long_summary", None), ("dreams_enabled", True),
+            ("search_top_k", None), ("search_max_distance", None), ("max_conclusions", None),
+        ):
+            setattr(self, f"_{name}", getattr(config, name, default) if config else default)
         self._turn_counter: int = 0
         # honcho session id -> observation booleans. Whole dicts are swapped in one assignment, so readers never see a partial one.
         self._session_observation: dict[str, dict[str, bool]] = {}
@@ -252,6 +259,7 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
 
         self._authed_call("session setup", lambda: self._sdk_session(session_id))
         observation = self._configure_session_peers(session_id, user_peer, assistant_peer)
+        self._apply_session_configuration(session_id)
         existing_messages: list = self._load_existing_messages(session_id) if observation is not None else []
 
         with self._cache_lock:
@@ -260,6 +268,68 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
             # A mid-init client rebuild dropped the cached session; resolve a fresh one.
             honcho_session = self._authed_call("session setup", lambda: self._sdk_session(session_id))
         return honcho_session, existing_messages, observation
+
+    def _session_configuration(self) -> Any | None:
+        """SessionConfiguration for the configured summary/dream settings, or None when every
+        knob is at its server default (no set_configuration call needed). Dream config is only
+        pushed to DISABLE it: enabled is the server default, so a default config stays silent.
+        getattr defaults keep managers built without __init__ (test fakes) at server defaults."""
+        summary: dict[str, Any] = {}
+        if (enabled := getattr(self, "_summary_enabled", None)) is not None:
+            summary["enabled"] = bool(enabled)
+        if (short := getattr(self, "_messages_per_short_summary", None)) is not None:
+            summary["messages_per_short_summary"] = int(short)
+        if (long := getattr(self, "_messages_per_long_summary", None)) is not None:
+            summary["messages_per_long_summary"] = int(long)
+        dream_off = not getattr(self, "_dreams_enabled", True)
+        if not summary and not dream_off:
+            return None
+        from honcho.api_types import DreamConfiguration, SessionConfiguration, SummaryConfiguration
+        return SessionConfiguration(
+            summary=SummaryConfiguration(**summary) if summary else None,
+            dream=DreamConfiguration(enabled=False) if dream_off else None,
+        )
+
+    def _apply_session_configuration(self, session_id: str) -> None:
+        """Push the configured summary/dream settings to the session (fail-open; the server
+        defaults apply when unset, and a rejected call must not block session setup)."""
+        configuration = self._session_configuration()
+        if configuration is None:
+            return
+        self._guarded(
+            lambda: self._authed_call(
+                "session configuration", lambda: self._sdk_session(session_id).set_configuration(configuration)),
+            None, logging.WARNING, "Honcho session configuration rejected for '%s' (server defaults apply): %s", session_id,
+        )
+
+    def _context_search_kwargs(self) -> dict[str, Any]:
+        """Configured retrieval-tuning kwargs for session.context()/peer.context() (empty when unset)."""
+        return {key: value for key, value in (
+            ("search_top_k", getattr(self, "_search_top_k", None)),
+            ("search_max_distance", getattr(self, "_search_max_distance", None)),
+            ("max_conclusions", getattr(self, "_max_conclusions", None)),
+        ) if value is not None}
+
+    def schedule_session_dream(self, session_key: str) -> bool:
+        """Schedule a dream (memory consolidation + peer card update) for a session: the AI peer
+        observes the user peer. Fail-open — a rejected schedule only loses one consolidation pass."""
+        if not getattr(self, "_dreams_enabled", True):
+            return False
+        session = self._cached_session(session_key)
+        if session is None:
+            return False
+
+        def _schedule() -> bool:
+            self._authed_call(
+                "dream schedule",
+                lambda: self.honcho.schedule_dream(
+                    observer=session.assistant_peer_id, observed=session.user_peer_id,
+                    session=session.honcho_session_id),
+            )
+            logger.info("Scheduled Honcho dream for session '%s' (observer=%s, observed=%s)",
+                        session_key, session.assistant_peer_id, session.user_peer_id)
+            return True
+        return self._guarded(_schedule, False, logging.DEBUG, "Honcho dream schedule failed for '%s': %s", session_key)
 
     @staticmethod
     def _has_unsynced(session: HonchoSession) -> bool:
@@ -440,13 +510,16 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
                         self._session_observation[session.honcho_session_id] = observation
             honcho_messages = []
             for m in new_messages:
+                # Turn metadata (author peer, platform, turn number) rides with the message so
+                # Honcho-side tooling can attribute and filter turns (SDK: peer.message(metadata=)).
+                meta = m.get("metadata")
                 if m["role"] != "user":
-                    honcho_messages.append(assistant_peer.message(m["content"]))
+                    honcho_messages.append(assistant_peer.message(m["content"], **({"metadata": meta} if meta else {})))
                     continue
                 author_peer_id = m.get("author_peer_id")
                 peer = (self._author_peer_for_session(honcho_session, session.honcho_session_id, author_peer_id)
                         if author_peer_id else user_peer)
-                honcho_messages.append(peer.message(m["content"]))
+                honcho_messages.append(peer.message(m["content"], **({"metadata": meta} if meta else {})))
             honcho_session.add_messages(honcho_messages)
             return len(honcho_messages)
 

@@ -343,8 +343,54 @@ Host key is derived from the active Hermes profile: `hermes` (default) or `herme
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `contextTokens` | int | SDK default | Token budget for `context()` API calls. Also gates prefetch truncation (tokens × 4 chars) |
+| `contextTokens` | int | `2000` on new installs; uncapped for pre-existing configs (migration guard) | Token budget for `context()` API calls. Also gates prefetch truncation (tokens × 4 chars) |
 | `messageMaxChars` | int | `25000` | Max chars per message sent via `add_messages()`. Exceeding this triggers chunking with `[continued]` markers. Honcho cloud limit: 25k |
+
+### Summarization & Dreams
+
+Applied to each session via `session.set_configuration()` at session setup; blank values keep the
+Honcho server defaults. At session end (after the message flush) the plugin schedules a dream —
+Honcho's background consolidation pass that updates representations and peer cards — with the AI
+peer observing the user peer. Both paths fail open.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `summaryEnabled` | bool | server default (on) | Let Honcho summarize sessions |
+| `messagesPerShortSummary` | int | server default | Messages between short summaries |
+| `messagesPerLongSummary` | int | server default | Messages between long summaries |
+| `dreams` | bool | `true` | Schedule a consolidation dream at session end (`schedule_dream(observer=<ai>, observed=<user>)`). `false` also disables dreams in the session configuration |
+
+### Retrieval Tuning
+
+Plumbed into `session.context()` / `peer.context()` calls as `search_top_k` / `search_max_distance`
+/ `max_conclusions`. Blank keeps the Honcho server defaults.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `searchTopK` | int | server default | Semantically relevant conclusions returned per context lookup |
+| `searchMaxDistance` | float | server default | Maximum semantic distance (0.0–1.0) for context search results |
+| `maxConclusions` | int | server default | Maximum conclusions included in a representation per lookup |
+
+### Queue & Data Lifecycle
+
+- `hermes honcho queue [--session NAME | --all]` — surfaces `honcho.queue_status()`: work units
+  (Honcho's async representation/summary/dream derivation tasks) as total/completed/in-progress/
+  pending counts plus a per-session breakdown. Use it to tell "memory is still consolidating"
+  from "queue is drained".
+- `hermes honcho delete-session [NAME] [--yes]` — deletes one session. The server accepts the
+  deletion asynchronously (HTTP 202) and cascades through messages, embeddings, session-scoped
+  conclusions and queued work units in the background. Derived conclusions that outlive sessions
+  are peer-level and are deleted separately through `honcho_conclude list` + `delete_id`.
+- `hermes honcho delete-workspace [--yes]` — deletes every session in the configured workspace
+  first, then the workspace itself. A `409 Conflict` from the workspace delete means the cascade
+  is still draining; wait and re-run.
+
+### Streaming (dialectic)
+
+Dialectic calls use synchronous `peer.chat()`, not `peer.chat_stream()`: every call site either
+runs in a background prefetch thread publishing one string into the pending-result slot, or is a
+tool handler returning a single JSON payload to the model. Neither has an interactive token
+consumer, so streaming would add SSE lifecycle complexity for zero user-visible benefit.
 
 ### Cadence (Cost Control)
 
@@ -418,6 +464,9 @@ Presets:
 | `hermes honcho tokens --dialectic <N>` | Set dialectic max chars |
 | `hermes honcho map <name>` | Map current directory to a session name |
 | `hermes honcho sync` | Create host blocks for all Hermes profiles |
+| `hermes honcho queue [--session N \| --all]` | Async processing queue status (work units pending/running/done, per-session breakdown) |
+| `hermes honcho delete-session [name] [--yes]` | Delete a session; the server cascades asynchronously (HTTP 202) through messages, embeddings, session conclusions and queue items |
+| `hermes honcho delete-workspace [--yes]` | Delete every session, then the workspace (409 = cascade still draining, re-run) |
 
 ## Example Config
 

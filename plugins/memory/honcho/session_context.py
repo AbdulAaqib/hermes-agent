@@ -12,6 +12,10 @@ logger = logging.getLogger("plugins.memory.honcho.session")
 
 _FAILED = object()  # sentinel: a guarded call raised (distinct from a legitimately empty/None result)
 
+# Honcho peer cards hold at most this many facts; writes beyond it are truncated (oldest-first
+# ordering keeps the most load-bearing facts: callers prepend identity, append preferences).
+PEER_CARD_MAX_FACTS = 40
+
 # Reasoning-channel markers a summarizer model can leave inside a persisted session summary.
 _THINK_BLOCK_RE = re.compile(
     r"<\s*(?:think|thinking|reasoning|thought|reasoning_scratchpad)\s*>.*?"
@@ -95,6 +99,7 @@ class SessionContextMixin:
         context_kwargs: dict[str, Any] = self._target_kwargs(target)
         if search_query is not None:
             context_kwargs["search_query"] = search_query
+        context_kwargs.update(self._context_search_kwargs())
         peer = lambda: self._get_or_create_peer(peer_id)  # noqa: E731
         failed = "Direct %s failed for '%%s': %%s"
         ctx = self._guarded_authed(
@@ -136,7 +141,8 @@ class SessionContextMixin:
                 return
             ctx = self._authed_call(
                 "session summary fetch",
-                lambda: self._sdk_session(session.honcho_session_id).context(summary=True, tokens=self._context_tokens),
+                lambda: self._sdk_session(session.honcho_session_id).context(
+                    summary=True, tokens=self._context_tokens, **self._context_search_kwargs()),
             )
             if ctx.summary and (summary := usable_honcho_summary(getattr(ctx.summary, "content", None))):
                 result["summary"] = summary
@@ -195,6 +201,7 @@ class SessionContextMixin:
                 lambda: self._sdk_session(session.honcho_session_id).context(
                     summary=True, tokens=self._context_tokens,
                     peer_target=target_peer_id or observer_peer_id, peer_perspective=observer_peer_id,
+                    **self._context_search_kwargs(),
                 ),
             )
             result: dict[str, Any] = {}
@@ -320,7 +327,15 @@ class SessionContextMixin:
         return self._guarded_session(session_key, _list, [], logging.DEBUG, "Honcho list_conclusions failed: %s")
 
     def set_peer_card(self, session_key: str, card: list[str], peer: str = "user") -> list[str] | None:
-        """Replace a peer's card. Returns the updated card, or None on failure."""
+        """Replace a peer's card. Returns the updated card, or None on failure.
+        Cards are capped at PEER_CARD_MAX_FACTS: a longer write keeps the first facts
+        (callers order identity first) and logs the drop so the truncation is visible."""
+        card = [str(fact) for fact in card if str(fact).strip()]
+        if len(card) > PEER_CARD_MAX_FACTS:
+            logger.info("Peer card write truncated from %d to %d facts (peer=%s, session=%s)",
+                        len(card), PEER_CARD_MAX_FACTS, peer, session_key)
+            card = card[:PEER_CARD_MAX_FACTS]
+
         def _update(session: Any) -> list[str] | None:
             observer_peer_id, target_peer_id = self._resolve_observer_target(session, peer)
             if observer_peer_id is None:
@@ -376,6 +391,12 @@ class SessionContextMixin:
         apply_injection_cap: bool = True, raise_errors: bool = False,
     ) -> str:
         """Ask Honcho's dialectic endpoint about a peer (LLM on the backend; run off-thread).
+
+        Synchronous ``peer.chat()`` is deliberate over ``peer.chat_stream()``: every call site
+        either runs in a background prefetch thread publishing one string into the pending-result
+        slot, or is a tool handler returning a single JSON payload to the model. Neither has an
+        interactive token consumer, so streaming would add SSE lifecycle complexity for zero
+        user-visible benefit. Revisit if a dialectic call ever drives a live chat surface.
         ``reasoning_level`` is honored only when dialecticDynamic is true. ``apply_injection_cap``
         clips to ``dialecticMaxChars`` (automatic injection only). ``raise_errors`` re-raises backend
         failures instead of returning "" so explicit tool calls can tell a timeout from an empty answer.

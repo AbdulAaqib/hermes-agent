@@ -23,7 +23,8 @@ _INHERITED_KEYS = (
     "recallMode", "writeFrequency", "sessionStrategy", "contextTokens",
     "dialecticReasoningLevel", "dialecticDynamic", "dialecticMaxChars",
     "messageMaxChars", "dialecticMaxInputChars", "saveMessages", "observation",
-    "recallSync",
+    "recallSync", "summaryEnabled", "messagesPerShortSummary", "messagesPerLongSummary",
+    "dreams", "searchTopK", "searchMaxDistance", "maxConclusions",
 )
 # clone_honcho_for_profile also carries the operator's runtime-to-peer routing intent.
 _CLONE_KEYS = _INHERITED_KEYS[:3] + ("sessionPeerPrefix", "sessionAiPeerPrefix") + _INHERITED_KEYS[3:] + (
@@ -782,9 +783,10 @@ def _setup_tuning(cfg: dict, hermes_host: dict) -> None:
 
     current_ctx_tokens = _pref(hermes_host, cfg, "contextTokens")
     _menu("Context injection per turn (hybrid/context recall modes only)",
-          "uncapped -- no limit (default)",
+          "2000     -- default cap on new installs",
+          "uncapped -- no limit",
           "N        -- token limit per turn (e.g. 1200)")
-    new_ctx_tokens = _prompt("Context tokens", default=str(current_ctx_tokens) if current_ctx_tokens else "uncapped").strip()
+    new_ctx_tokens = _prompt("Context tokens", default=str(current_ctx_tokens) if current_ctx_tokens else "2000").strip()
     if new_ctx_tokens.lower() in {"none", "uncapped", "no limit"}:
         hermes_host.pop("contextTokens", None)
     elif new_ctx_tokens and (val := _first_parsed([new_ctx_tokens], int, -1)) >= 0:  # non-numeric keeps current
@@ -1840,6 +1842,113 @@ Step 6  Next steps
     print()
 
 
+# ── queue / deletion governance ─────────────────────────────────────────────
+
+def _queue_status_lines(status, session_label: str) -> list[str]:
+    """Render a QueueStatusResponse: aggregate work-unit counts, then per-session rows.
+    Work units are Honcho's async derivation tasks (representation updates, summaries,
+    dreams); honcho-ai 2.2.0 returns aggregate + per-session counts, no per-type split."""
+    lines = [
+        f"  Scope:          {session_label}",
+        f"  Work units:     {status.total_work_units} total",
+        f"  Completed:      {status.completed_work_units}",
+        f"  In progress:    {status.in_progress_work_units}",
+        f"  Pending:        {status.pending_work_units}",
+    ]
+    sessions = getattr(status, "sessions", None) or {}
+    if sessions:
+        lines.append(f"  {'Session':<40} {'pending':>8} {'running':>8} {'done':>8}")
+        for sid, row in sessions.items():
+            lines.append(f"  {sid:<40} {row.pending_work_units:>8} {row.in_progress_work_units:>8} {row.completed_work_units:>8}")
+    if status.pending_work_units or status.in_progress_work_units:
+        lines.append("  Memory is still consolidating — representations and cards refresh as the queue drains.")
+    else:
+        lines.append("  Queue is drained: all representations, summaries and dreams are current.")
+    return lines
+
+
+def cmd_queue(args) -> None:
+    """Show Honcho's async processing queue (representation/summary/dream work units)."""
+    try:
+        import honcho  # noqa: F401
+    except ImportError:
+        print("  honcho-ai is not installed. Run: hermes honcho setup\n")
+        return
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    scoped = not getattr(args, "all", False)
+    session = getattr(args, "session", None) or (hcfg.resolve_session_name() if scoped else None)
+    try:
+        status = client.queue_status(session=session) if session else client.queue_status()
+    except Exception as e:
+        return print(f"  Queue status unavailable: {e}\n")
+    label = f"session '{session}'" if session else "whole workspace"
+    print(f"\nHoncho queue status{f' [{hcfg.host}]' if hcfg.host != HOST else ''}\n" + RULE)
+    print("\n".join(_queue_status_lines(status, label)) + "\n")
+
+
+def cmd_delete_session(args) -> None:
+    """Delete one Honcho session (messages, embeddings, session conclusions, queue items)."""
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    name = (getattr(args, "name", None) or hcfg.resolve_session_name() or "").strip()
+    if not name:
+        return print("  No session name given and none resolves from this directory. Pass a name.\n")
+    if not getattr(args, "yes", False) and not _yes(_prompt(
+            f"Delete Honcho session '{name}' in workspace '{hcfg.workspace_id}'? This cannot be undone. (y/N)", default="n")):
+        return print("  Nothing deleted.\n")
+    try:
+        client.session(name).delete()
+    except Exception as e:
+        status = getattr(e, "status_code", None) or getattr(e, "status", None)
+        if status == 404:
+            return print(f"  Session '{name}' not found in workspace '{hcfg.workspace_id}'.\n")
+        return print(f"  Delete failed: {e}\n")
+    print(f"  Session '{name}' deleted (workspace '{hcfg.workspace_id}').")
+    print("  Deletion is accepted asynchronously (HTTP 202): the server cascades through messages,")
+    print("  embeddings, session-scoped conclusions and queued work units in the background.")
+    print("  Derived conclusions that outlive sessions are deleted separately with")
+    print("  'honcho_conclude list' + 'honcho_conclude delete_id' (peer-level PII removal).\n")
+
+
+def cmd_delete_workspace(args) -> None:
+    """Delete the configured workspace: its sessions first, then the workspace (409 means not empty)."""
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    workspace = hcfg.workspace_id
+    if not getattr(args, "yes", False) and not _yes(_prompt(
+            f"Delete workspace '{workspace}' and EVERY session in it? This cannot be undone. (y/N)", default="n")):
+        return print("  Nothing deleted.\n")
+    try:
+        sessions = [s.id for s in client.sessions(size=50).items]
+    except Exception as e:
+        return print(f"  Could not list workspace sessions: {e}\n")
+    failed = 0
+    for sid in sessions:
+        try:
+            client.session(sid).delete()
+        except Exception as e:
+            failed += 1
+            print(f"  Session '{sid}' delete failed: {e}")
+    if failed:
+        return print(f"\n  {failed} session(s) could not be deleted; workspace left in place.\n")
+    try:
+        client.delete_workspace(workspace)
+    except Exception as e:
+        status = getattr(e, "status_code", None) or getattr(e, "status", None)
+        if status == 409:
+            return print(f"  Workspace '{workspace}' refused deletion (409 Conflict): it is not empty yet —\n"
+                         "  session deletions cascade asynchronously. Wait a moment and re-run.\n")
+        return print(f"  Workspace delete failed: {e}\n")
+    print(f"  Deleted {len(sessions)} session(s) and workspace '{workspace}'.\n")
+
+
 # ── dispatch / argparse ────────────────────────────────────────────────────
 
 # (subcommand, help, handler, ((arg, kwargs), ...)); order defines --help order.
@@ -1880,6 +1989,17 @@ _SUBCOMMANDS = (
         ("--show", dict(action="store_true", help="Show current AI peer representation from Honcho")),
     )),
     ("migrate", "Step-by-step migration guide from openclaw-honcho to Hermes Honcho", cmd_migrate, ()),
+    ("queue", "Show Honcho's async processing queue (work units pending/running/done)", cmd_queue, (
+        ("--session", dict(metavar="NAME", default=None, help="Scope the status to this session (default: this directory's session)")),
+        ("--all", dict(action="store_true", help="Show status for the whole workspace")),
+    )),
+    ("delete-session", "Delete a Honcho session (messages, session conclusions, queue items)", cmd_delete_session, (
+        ("name", dict(nargs="?", default=None, help="Session to delete (default: this directory's session)")),
+        ("--yes", dict(action="store_true", help="Skip the confirmation prompt")),
+    )),
+    ("delete-workspace", "Delete the configured workspace (sessions first, then the workspace)", cmd_delete_workspace, (
+        ("--yes", dict(action="store_true", help="Skip the confirmation prompt")),
+    )),
     ("enable", "Enable Honcho for the active profile", cmd_enable, ()),
     ("disable", "Disable Honcho for the active profile", cmd_disable, ()),
     ("sync", "Sync Honcho config to all existing profiles", cmd_sync, ()),
@@ -1899,7 +2019,7 @@ def honcho_command(args) -> None:
     handler = cmd_status if sub is None else _HANDLERS.get(sub)
     if handler is None:
         return print(f"  Unknown honcho command: {sub}\n"
-                     "  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync\n")
+                     "  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync, queue, delete-session, delete-workspace\n")
     try:
         handler(args)
     except ConfigWriteRefused as e:
