@@ -160,7 +160,7 @@ Five bidirectional tools. All accept an optional `peer` parameter (`"user"` or `
 | `honcho_search` | No | Cross-session message search (hybrid semantic + keyword, ranked excerpts; 800 tok default, 2000 max) |
 | `honcho_context` | No | Full session context: summary, representation, card, messages |
 | `honcho_reasoning` | Yes | LLM-synthesized answer via dialectic `.chat()` |
-| `honcho_conclude` | No | Write, list/search, or delete persistent conclusions (list surfaces the ids delete needs) |
+| `honcho_conclude` | No | Write, list/search, or delete persistent conclusions (list surfaces the ids delete needs). `list` accepts an optional `level` filter: `explicit` (facts extracted from messages) or `deductive`/`inductive`/`contradiction` (derived during dreaming) |
 
 Tool visibility depends on `recallMode`: hidden in `context` mode, always present in `tools` and `hybrid`.
 
@@ -175,6 +175,8 @@ Config is read from the first file that exists:
 | 3 | `~/.honcho/config.json` | Global (cross-app interop) |
 
 Host key is derived from the active Hermes profile: `hermes` (default) or `hermes_<profile>`.
+The resolved workspace ID is validated at config load against `^[a-zA-Z0-9_-]+$` (max 506 chars);
+an invalid `workspace` key fails fast with a clear error instead of a server 4xx mid-session.
 
 For every key, resolution order is: **host block > root > env var > default**.
 
@@ -377,6 +379,13 @@ Plumbed into `session.context()` / `peer.context()` calls as `search_top_k` / `s
   (Honcho's async representation/summary/dream derivation tasks) as total/completed/in-progress/
   pending counts plus a per-session breakdown. Use it to tell "memory is still consolidating"
   from "queue is drained".
+- `hermes honcho clone-session [NAME] [--up-to-message ID]` — branches a session via
+  `session.clone()`: all messages and peers are copied to a new server-assigned session ID,
+  optionally cut off at one message. Use it to fork a conversation for speculative planning.
+- `hermes honcho upload <file> [--peer ID] [--session NAME]` — ingests a document (PDF, text,
+  JSON) via `session.upload_file()`, attributed to the given peer (default: `peerName`) with
+  provenance metadata. Large files are split by the server; reasoning happens in the background
+  (watch `hermes honcho queue`).
 - `hermes honcho delete-session [NAME] [--yes]` — deletes one session. The server accepts the
   deletion asynchronously (HTTP 202) and cascades through messages, embeddings, session-scoped
   conclusions and queued work units in the background. Derived conclusions that outlive sessions
@@ -385,12 +394,20 @@ Plumbed into `session.context()` / `peer.context()` calls as `search_top_k` / `s
   first, then the workspace itself. A `409 Conflict` from the workspace delete means the cascade
   is still draining; wait and re-run.
 
-### Streaming (dialectic)
+### Streaming & provider adapters (dialectic / context)
 
 Dialectic calls use synchronous `peer.chat()`, not `peer.chat_stream()`: every call site either
 runs in a background prefetch thread publishing one string into the pending-result slot, or is a
 tool handler returning a single JSON payload to the model. Neither has an interactive token
 consumer, so streaming would add SSE lifecycle complexity for zero user-visible benefit.
+
+The SDK's `context().to_openai()` / `to_anthropic()` adapters are likewise unused — by
+architecture, not omission: the `MemoryProvider` contract returns strings (`prefetch()` /
+`system_prompt_block()` inject text into Hermes's own system prompt; tool handlers return JSON),
+and Hermes builds provider message arrays in `agent/` from its own turn history, never from
+plugin-supplied arrays. There is no call site that could consume an OpenAI/Anthropic-shaped
+message list, and re-wrapping representation/card/summary as extra role-tagged messages would
+break the byte-stable system prompt Hermes's prompt caching depends on.
 
 ### Cadence (Cost Control)
 
@@ -467,6 +484,8 @@ Presets:
 | `hermes honcho queue [--session N \| --all]` | Async processing queue status (work units pending/running/done, per-session breakdown) |
 | `hermes honcho delete-session [name] [--yes]` | Delete a session; the server cascades asynchronously (HTTP 202) through messages, embeddings, session conclusions and queue items |
 | `hermes honcho delete-workspace [--yes]` | Delete every session, then the workspace (409 = cascade still draining, re-run) |
+| `hermes honcho clone-session [name] [--up-to-message ID]` | Branch a session via `session.clone()` (server assigns the new session ID) |
+| `hermes honcho upload <file> [--peer ID] [--session NAME]` | Ingest a document (PDF/text/JSON) via `session.upload_file()`, attributed to a peer |
 
 ## Example Config
 

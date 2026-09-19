@@ -1842,6 +1842,64 @@ Step 6  Next steps
     print()
 
 
+# ── session branching / document ingestion ──────────────────────────────────
+
+def cmd_clone_session(args) -> None:
+    """Clone a Honcho session (all messages + peers, optionally up to one message) for branching."""
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    name = (getattr(args, "name", None) or hcfg.resolve_session_name() or "").strip()
+    if not name:
+        return print("  No session name given and none resolves from this directory. Pass a name.\n")
+    message_id = (getattr(args, "up_to_message", None) or "").strip() or None
+    try:
+        cloned = client.session(name).clone(message_id=message_id)
+    except Exception as e:
+        status = getattr(e, "status_code", None) or getattr(e, "status", None)
+        if status == 404:
+            return print(f"  Session '{name}' not found in workspace '{hcfg.workspace_id}'.\n")
+        return print(f"  Clone failed: {e}\n")
+    cutoff = f" up to message {message_id}" if message_id else ""
+    print(f"  Cloned session '{name}'{cutoff} -> '{cloned.id}' (workspace '{hcfg.workspace_id}').")
+    print("  Map a directory to it with: hermes honcho map " + str(cloned.id) + "\n")
+
+
+def cmd_upload(args) -> None:
+    """Upload a document (PDF/text/JSON) into a Honcho session, attributed to a peer."""
+    import mimetypes
+
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    file_path = Path(getattr(args, "file", "") or "").expanduser()
+    if not file_path.is_file():
+        return print(f"  File not found: {file_path}\n")
+    peer = (getattr(args, "peer", None) or hcfg.peer_name or "").strip()
+    if not peer:
+        return print("  No peer given and peerName is not configured. Pass --peer <id>.\n")
+    session_name = (getattr(args, "session", None) or hcfg.resolve_session_name() or "").strip()
+    if not session_name:
+        return print("  No session name given and none resolves from this directory. Pass --session <name>.\n")
+    content = file_path.read_bytes()
+    if not content:
+        return print(f"  File is empty: {file_path}\n")
+    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    try:
+        messages = client.session(session_name).upload_file(
+            file=(file_path.name, content, content_type),
+            peer=peer,
+            metadata={"source": "cli_upload", "original_file": file_path.name},
+        )
+    except Exception as e:
+        return print(f"  Upload failed: {e}\n")
+    print(f"  Uploaded {file_path.name} ({len(content)} bytes, {content_type}) into session '{session_name}'")
+    print(f"  as {len(messages)} message(s) attributed to peer '{peer}'.")
+    print("  Honcho reasons over uploaded documents in the background; check 'hermes honcho queue' for progress.\n")
+
+
 # ── queue / deletion governance ─────────────────────────────────────────────
 
 def _queue_status_lines(status, session_label: str) -> list[str]:
@@ -2000,6 +2058,16 @@ _SUBCOMMANDS = (
     ("delete-workspace", "Delete the configured workspace (sessions first, then the workspace)", cmd_delete_workspace, (
         ("--yes", dict(action="store_true", help="Skip the confirmation prompt")),
     )),
+    ("clone-session", "Clone a Honcho session (branching; optionally up to one message)", cmd_clone_session, (
+        ("name", dict(nargs="?", default=None, help="Session to clone (default: this directory's session)")),
+        ("--up-to-message", dict(metavar="ID", default=None, dest="up_to_message",
+                                 help="Clone only messages up to and including this message ID")),
+    )),
+    ("upload", "Upload a document (PDF/text/JSON) into a session, attributed to a peer", cmd_upload, (
+        ("file", dict(help="Path to the document to upload")),
+        ("--peer", dict(metavar="ID", default=None, help="Peer the document is attributed to (default: peerName)")),
+        ("--session", dict(metavar="NAME", default=None, help="Target session (default: this directory's session)")),
+    )),
     ("enable", "Enable Honcho for the active profile", cmd_enable, ()),
     ("disable", "Disable Honcho for the active profile", cmd_disable, ()),
     ("sync", "Sync Honcho config to all existing profiles", cmd_sync, ()),
@@ -2019,7 +2087,8 @@ def honcho_command(args) -> None:
     handler = cmd_status if sub is None else _HANDLERS.get(sub)
     if handler is None:
         return print(f"  Unknown honcho command: {sub}\n"
-                     "  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync, queue, delete-session, delete-workspace\n")
+                     "  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync, "
+                     "queue, delete-session, delete-workspace, clone-session, upload\n")
     try:
         handler(args)
     except ConfigWriteRefused as e:

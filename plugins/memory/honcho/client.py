@@ -14,6 +14,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import threading as _threading
 import time
 import weakref
@@ -233,6 +234,22 @@ class _HostLookup:
         return {k: v for k, v in pairs if k and v}
 
 
+# Honcho workspace IDs must match this shape (server-enforced); validate at config resolution
+# so a typo'd `workspace` key fails with a clear error instead of a server 4xx mid-session.
+_WORKSPACE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_WORKSPACE_ID_MAX_LEN = 506
+
+
+def validate_workspace_id(workspace_id: str) -> str:
+    """Return ``workspace_id`` when valid; raise ValueError naming the offending value otherwise."""
+    if not workspace_id or not _WORKSPACE_ID_RE.match(workspace_id) or len(workspace_id) > _WORKSPACE_ID_MAX_LEN:
+        raise ValueError(
+            f"Invalid Honcho workspace ID {workspace_id!r}: must match ^[a-zA-Z0-9_-]+$ and be at most "
+            f"{_WORKSPACE_ID_MAX_LEN} characters. Fix the 'workspace' key in honcho.json."
+        )
+    return workspace_id
+
+
 def _is_local_base_url(base_url: str | None) -> bool:
     """True for loopback/RFC1918/link-local/ULA/CGNAT self-hosted Honcho URLs. Local
     deployments can run without auth but the SDK needs a non-empty api_key, so LAN/VPN
@@ -278,7 +295,7 @@ def _connection_fields(look: _HostLookup, host: str, path: Path) -> dict[str, An
     base_url = _sanitize_url(host_block.get("baseUrl") or host_block.get("base_url") or native_base_url
                              or raw.get("baseUrl") or raw.get("base_url") or _env_base_url())
     return {
-        "workspace_id": look.pick("workspace") or host,
+        "workspace_id": validate_workspace_id(look.pick("workspace") or host),
         "ai_peer": look.pick("aiPeer") or host,
         "api_key": api_key,
         "environment": look.pick("environment", "production"),
@@ -450,7 +467,7 @@ class HonchoClientConfig:
         api_key = get_secret("HONCHO_API_KEY")
         base_url = _sanitize_url(_env_base_url())
         return cls(
-            host=resolved_host, workspace_id=workspace_id, api_key=api_key, base_url=base_url,
+            host=resolved_host, workspace_id=validate_workspace_id(workspace_id), api_key=api_key, base_url=base_url,
             environment=get_secret("HONCHO_ENVIRONMENT", "") or "production",
             timeout=_resolve_optional_float(os.environ.get("HONCHO_TIMEOUT")),
             ai_peer=resolved_host, enabled=bool(api_key or base_url),

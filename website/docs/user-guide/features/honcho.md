@@ -261,6 +261,8 @@ hermes honcho migrate         # Step-by-step migration guide from openclaw-honch
 hermes honcho queue           # Async queue status (work units pending/running/done)
 hermes honcho delete-session  # Delete a session (async 202 cascade)
 hermes honcho delete-workspace # Delete the workspace (sessions first; 409 = still draining)
+hermes honcho clone-session   # Branch a session (optionally --up-to-message ID)
+hermes honcho upload <file>   # Ingest a document (PDF/text/JSON) as a peer (--peer/--session)
 ```
 
 ## Migrating from `hermes honcho`

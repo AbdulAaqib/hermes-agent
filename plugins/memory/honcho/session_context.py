@@ -185,7 +185,16 @@ class SessionContextMixin:
 
     def get_session_context(self, session_key: str, peer: str = "user") -> dict[str, Any]:
         """Fetch session-level context (summary, representation, card, recent messages).
-        Raises HonchoAuthError so callers can tell rejected credentials from no context."""
+        Raises HonchoAuthError so callers can tell rejected credentials from no context.
+
+        The SDK's ``SessionContext.to_openai()`` / ``to_anthropic()`` adapters are deliberately
+        NOT used here (checklist 6.3, N/A-by-architecture): the MemoryProvider contract returns
+        strings — ``prefetch()``/``system_prompt_block()`` inject text into Hermes's own system
+        prompt, and tool handlers return JSON strings. Hermes builds provider message arrays in
+        ``agent/`` from its own turn history, never from plugin-supplied arrays, so there is no
+        call site that could consume an OpenAI/Anthropic-shaped message list. The adapters would
+        also re-wrap representation/card/summary as extra role-tagged messages, breaking the
+        byte-stable system prompt Hermes's prompt caching depends on."""
         session = self._cached_session(session_key)
         if not session:
             return {}
@@ -313,17 +322,24 @@ class SessionContextMixin:
             session_key, _delete, False, logging.ERROR, "Failed to delete conclusion %s: %s", conclusion_id,
         )
 
-    def list_conclusions(self, session_key: str, query: str | None = None, peer: str = "user", limit: int = 20):
-        """List (or semantically search with ``query``) conclusions as {"id", "content"} dicts."""
+    def list_conclusions(self, session_key: str, query: str | None = None, peer: str = "user", limit: int = 20,
+                         level: str | None = None):
+        """List (or semantically search with ``query``) conclusions as {"id", "content"} dicts.
+        ``level`` filters by reasoning level ("explicit" = extracted from messages; "deductive"/
+        "inductive"/"contradiction" = derived during dreaming), mapped to the SDK's
+        conclusions list/query ``filters``."""
         def _list(session: Any) -> list[dict]:
             target_peer_id = self._resolve_peer_id(session, peer)
             if target_peer_id is None:
                 return []
+            filters = {"level": level} if level else None
 
             def _fetch() -> Any:
                 scope = self._conclusions_scope(session, target_peer_id)
-                return scope.query(query, top_k=limit) if query else scope.list(size=limit).items
-            return [{"id": c.id, "content": c.content} for c in self._authed_call("conclusion list", _fetch)]
+                return (scope.query(query, top_k=limit, filters=filters) if query
+                        else scope.list(size=limit, filters=filters).items)
+            return [{"id": c.id, "content": c.content, "level": getattr(c, "level", None) or "explicit"}
+                    for c in self._authed_call("conclusion list", _fetch)]
         return self._guarded_session(session_key, _list, [], logging.DEBUG, "Honcho list_conclusions failed: %s")
 
     def set_peer_card(self, session_key: str, card: list[str], peer: str = "user") -> list[str] | None:

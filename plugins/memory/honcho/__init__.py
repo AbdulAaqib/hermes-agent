@@ -108,6 +108,9 @@ _CONTEXT_SECTIONS = (
 
 _PREWARM_QUERY = "Summarize what you know about this user. Focus on preferences, current projects, and working style."
 
+# Conclusion reasoning levels accepted by honcho_conclude's list filter (SDK ConclusionLevel).
+_CONCLUSION_LEVELS = ("explicit", "deductive", "inductive", "contradiction")
+
 
 class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
     """Honcho AI-native memory with dialectic Q&A and persistent user modeling."""
@@ -994,9 +997,15 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         query = (args.get("query") or "").strip()
         if query and not list_mode:
             return tool_error("query is only valid when list is true.")
+        if (args.get("level") or "").strip() and not list_mode:
+            return tool_error("level is only valid when list is true.")
 
         if list_mode:
-            return json.dumps({"conclusions": self._manager.list_conclusions(self._session_key, query=query or None, peer=peer)})
+            level = (args.get("level") or "").strip() or None
+            if level is not None and level not in _CONCLUSION_LEVELS:
+                return tool_error(f"Invalid level '{level}'. Options: {', '.join(_CONCLUSION_LEVELS)}")
+            return json.dumps({"conclusions": self._manager.list_conclusions(
+                self._session_key, query=query or None, peer=peer, level=level)})
         if refusal := self._bot_turn_write_refusal():
             return refusal
         if delete_id:
