@@ -97,6 +97,35 @@ REASONING_SCHEMA = _tool(
                 "fact lookup."
             ),
             "enum": ["minimal", "low", "medium", "high", "max"]},
+     "response_format": {
+            "type": "object",
+            "description": (
+                "Optional JSON Schema (root type must be 'object', depth <= 20, "
+                "<= 500 nodes) the answer must conform to. The result is then a "
+                "JSON string matching the schema instead of prose."
+            )},
+     "include_evidence": {
+            "type": "boolean",
+            "description": (
+                "When true, the response includes an `evidence` object listing the "
+                "conclusions the dialectic read (id, level, content, session_id, "
+                "source_ids). An empty conclusions list means it verifiably read "
+                "none; null means evidence was not returned."
+            )},
+     "scope": {
+            "type": "string",
+            "description": (
+                "Optional named Honcho scope confining recall to that scope's member "
+                "sessions (a persistent visibility boundary). Mutually exclusive "
+                "with `sessions`; requires a workspace-level key."
+            )},
+     "sessions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional one-off session allowlist confining recall to directly-stated "
+                "conclusions from those sessions. Mutually exclusive with `scope`."
+            )},
      "peer": _PEER},
     ["query"],
 )

@@ -6,7 +6,7 @@ AI-native cross-session user modeling with multi-pass dialectic reasoning, sessi
 
 ## Requirements
 
-- `pip install honcho-ai`
+- `pip install 'honcho-ai>=2.5.0,<3'` (2.5.0+ required for scopes, structured dialectic output, and evidence)
 - A Honcho Cloud account — connect via OAuth sign-in or an API key from
   [app.honcho.dev](https://app.honcho.dev) — or a self-hosted instance
 
@@ -377,8 +377,13 @@ Plumbed into `session.context()` / `peer.context()` calls as `search_top_k` / `s
 
 - `hermes honcho queue [--session NAME | --all]` — surfaces `honcho.queue_status()`: work units
   (Honcho's async representation/summary/dream derivation tasks) as total/completed/in-progress/
-  pending counts plus a per-session breakdown. Use it to tell "memory is still consolidating"
-  from "queue is drained".
+  pending counts plus a per-session breakdown. (honcho-ai 2.5.0 still returns aggregate +
+  per-session counts only; no per-type split exists in the SDK.)
+- `hermes honcho scope list|create|add-session|status` — named scopes: persistent visibility
+  boundaries over sets of sessions (SDK 2.5). `status --wait` polls the backfill until every
+  session is `completed` (with `docs_copied`). Scope-scoped recall requires a workspace-level
+  key: it reads across member sessions of every peer, so a peer-scoped credential cannot
+  authorize it.
 - `hermes honcho clone-session [NAME] [--up-to-message ID]` — branches a session via
   `session.clone()`: all messages and peers are copied to a new server-assigned session ID,
   optionally cut off at one message. Use it to fork a conversation for speculative planning.
@@ -393,6 +398,24 @@ Plumbed into `session.context()` / `peer.context()` calls as `search_top_k` / `s
 - `hermes honcho delete-workspace [--yes]` — deletes every session in the configured workspace
   first, then the workspace itself. A `409 Conflict` from the workspace delete means the cascade
   is still draining; wait and re-run.
+- `hermes honcho ask <query> [--scope S | --session ID] [--level L]` — workspace-level dialectic
+  (`honcho.chat()`, SDK 2.5): searches across ALL peers and observations in the workspace. Use it
+  for cross-peer analysis and common themes; use the `honcho_reasoning` tool (`peer.chat()`) for
+  one peer's representation of a target.
+
+### Structured dialectic (SDK 2.5: response_format, evidence, scope)
+
+`honcho_reasoning` accepts three optional extras:
+
+- `response_format` — a JSON Schema (root `type: "object"`, depth ≤ 20, ≤ 500 nodes; validated
+  client-side with clear errors) the answer must conform to. The result is a JSON string matching
+  the schema instead of prose.
+- `include_evidence` — attaches an `evidence` object listing the conclusions the dialectic read
+  (`id`, `level`, `content`, `session_id`, `source_ids`). An empty conclusions list means the run
+  verifiably read none; `null` means evidence was not returned.
+- `scope` / `sessions` — confine recall to a named scope's member sessions (persistent boundary)
+  or a one-off session allowlist. The two are mutually exclusive and rejected client-side.
+  Scope-scoped queries require a workspace-level key.
 
 ### Streaming & provider adapters (dialectic / context)
 
@@ -486,6 +509,8 @@ Presets:
 | `hermes honcho delete-workspace [--yes]` | Delete every session, then the workspace (409 = cascade still draining, re-run) |
 | `hermes honcho clone-session [name] [--up-to-message ID]` | Branch a session via `session.clone()` (server assigns the new session ID) |
 | `hermes honcho upload <file> [--peer ID] [--session NAME]` | Ingest a document (PDF/text/JSON) via `session.upload_file()`, attributed to a peer |
+| `hermes honcho scope list\|create\|add-session\|status` | Manage named scopes (persistent recall boundaries); `status --wait` polls the backfill |
+| `hermes honcho ask <query> [--scope S\|--session ID]` | Workspace-level dialectic across all peers (`honcho.chat()`) |
 
 ## Example Config
 

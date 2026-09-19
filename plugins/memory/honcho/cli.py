@@ -579,17 +579,17 @@ def _ensure_sdk_installed() -> bool:
     except ImportError:
         pass
     print("  honcho-ai is not installed.")
-    if not _yes(_prompt("Install it now? (honcho-ai==2.2.0)", default="y")):
-        print("  Skipping install. Run: pip install 'honcho-ai==2.2.0'\n")
+    if not _yes(_prompt("Install it now? (honcho-ai==2.5.0)", default="y")):
+        print("  Skipping install. Run: pip install 'honcho-ai>=2.5.0,<3'\n")
         return False
     print("  Installing honcho-ai...", flush=True)
     from tools.lazy_deps import install_specs  # env-aware: sealed hosted venvs redirect to the data volume
-    result = install_specs(["honcho-ai==2.2.0"])
+    result = install_specs(["honcho-ai==2.5.0"])
     if result.ok:
         print("  Installed.\n")
         return True
     print(f"  Cannot install: {result.reason}\n" if result.blocked else
-          f"  Install failed:\n{(result.stderr or '').strip()}\n  Run manually: uv pip install 'honcho-ai==2.2.0'\n")
+          f"  Install failed:\n{(result.stderr or '').strip()}\n  Run manually: uv pip install 'honcho-ai>=2.5.0,<3'\n")
     return False
 
 
@@ -1900,12 +1900,126 @@ def cmd_upload(args) -> None:
     print("  Honcho reasons over uploaded documents in the background; check 'hermes honcho queue' for progress.\n")
 
 
+# ── scopes / workspace chat ─────────────────────────────────────────────────
+
+def cmd_scope(args) -> None:
+    """Manage named scopes (persistent visibility boundaries over sessions).
+
+    Scopes require a workspace-level key: scope-scoped recall reads across the member
+    sessions of every peer in the workspace, so a peer-scoped credential cannot authorize it."""
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    action = getattr(args, "scope_action", None) or "list"
+
+    if action == "list":
+        try:
+            scopes = list(client.scopes(size=50).items)
+        except Exception as e:
+            return print(f"  Could not list scopes: {e}\n")
+        if not scopes:
+            return print("\n  No scopes in this workspace. Create one with: hermes honcho scope create <name>\n")
+        print(f"\nHoncho scopes in workspace '{hcfg.workspace_id}' ({len(scopes)})\n" + RULE)
+        for s in scopes:
+            print(f"  {s.id}")
+        print()
+        return
+
+    name = (getattr(args, "name", None) or "").strip()
+    if not name:
+        return print(f"  'scope {action}' needs a scope name.\n")
+
+    if action == "create":
+        try:
+            client.scope(name)  # get-or-create; validates the ID client-side
+        except Exception as e:
+            return print(f"  Could not create scope '{name}': {e}\n")
+        print(f"  Scope '{name}' ready in workspace '{hcfg.workspace_id}'.")
+        print(f"  Add sessions with: hermes honcho scope add-session {name} <session-name>\n")
+        return
+
+    try:
+        scope = client.get_scope(name)
+    except Exception as e:
+        status = getattr(e, "status_code", None) or getattr(e, "status", None)
+        if status == 404:
+            return print(f"  Scope '{name}' not found. Create it with: hermes honcho scope create {name}\n")
+        return print(f"  Could not load scope '{name}': {e}\n")
+
+    if action == "add-session":
+        session = (getattr(args, "session", None) or hcfg.resolve_session_name() or "").strip()
+        if not session:
+            return print("  No session given and none resolves from this directory. Pass one.\n")
+        try:
+            scope.add_sessions([session])
+        except Exception as e:
+            return print(f"  Could not add '{session}' to scope '{name}': {e}\n")
+        print(f"  Session '{session}' added to scope '{name}'. Backfill runs in the background;")
+        print(f"  track it with: hermes honcho scope status {name} --wait\n")
+        return
+
+    if action == "status":
+        import time as _time
+
+        def _report() -> tuple[bool, list[str]]:
+            jobs = scope.status() or {}
+            rows, done = [], True
+            for sid, job in jobs.items():
+                state = getattr(job, "state", "?")
+                copied = getattr(job, "docs_copied", None)
+                done = done and state == "completed"
+                rows.append(f"  {sid:<40} {state:<10} {copied if copied is not None else '-'} docs")
+            return done, rows
+
+        wait = bool(getattr(args, "wait", False))
+        deadline = _time.monotonic() + 60.0
+        while True:
+            done, rows = _report()
+            if done or not wait or _time.monotonic() >= deadline:
+                break
+            _time.sleep(2.0)
+        print(f"\nScope '{name}' backfill status\n" + RULE)
+        print("\n".join(rows) if rows else "  No backfill jobs yet — add a session first.")
+        if done:
+            print("  All sessions backfilled; scope-scoped recall is current.\n")
+        else:
+            print("  Still backfilling; re-run with --wait to poll until complete.\n")
+        return
+
+    print(f"  Unknown scope action '{action}'. Available: list, create, add-session, status\n")
+
+
+def cmd_ask(args) -> None:
+    """Workspace-level dialectic query (honcho.chat): cross-peer, workspace-wide recall.
+
+    Unlike peer-scoped honcho_reasoning (one peer's representation of a target), this searches
+    ALL peers and observations in the workspace — use it for cross-peer analysis and common themes."""
+    query = (getattr(args, "query", None) or "").strip()
+    if not query:
+        return print("  Ask needs a query: hermes honcho ask \"what themes recur across users?\"\n")
+    scope = (getattr(args, "scope", None) or "").strip() or None
+    session = (getattr(args, "session", None) or "").strip() or None
+    if scope and session:
+        return print("  --scope and --session are mutually exclusive (the server rejects the combination).\n")
+    try:
+        hcfg, client = _connect(_host_key())
+    except Exception as e:
+        return print(f"  Honcho connection failed: {e}\n")
+    level = getattr(args, "level", None)
+    try:
+        answer = client.chat(query, reasoning_level=level, scope=scope, session=session)
+    except Exception as e:
+        return print(f"  Workspace query failed: {e}\n")
+    print(f"\n{answer or 'No relevant information in the workspace.'}\n")
+
+
 # ── queue / deletion governance ─────────────────────────────────────────────
 
 def _queue_status_lines(status, session_label: str) -> list[str]:
     """Render a QueueStatusResponse: aggregate work-unit counts, then per-session rows.
     Work units are Honcho's async derivation tasks (representation updates, summaries,
-    dreams); honcho-ai 2.2.0 returns aggregate + per-session counts, no per-type split."""
+    dreams); honcho-ai 2.5.0 returns aggregate + per-session counts, no per-type split."""
     lines = [
         f"  Scope:          {session_label}",
         f"  Work units:     {status.total_work_units} total",
@@ -2068,6 +2182,20 @@ _SUBCOMMANDS = (
         ("--peer", dict(metavar="ID", default=None, help="Peer the document is attributed to (default: peerName)")),
         ("--session", dict(metavar="NAME", default=None, help="Target session (default: this directory's session)")),
     )),
+    ("scope", "Manage named scopes (list/create/add-session/status)", cmd_scope, (
+        ("scope_action", dict(nargs="?", default="list", choices=("list", "create", "add-session", "status"),
+                              help="Scope action (default: list)")),
+        ("name", dict(nargs="?", default=None, help="Scope name for create/add-session/status")),
+        ("session", dict(nargs="?", default=None, help="Session to add (add-session; default: this directory's session)")),
+        ("--wait", dict(action="store_true", help="status: poll until the backfill completes")),
+    )),
+    ("ask", "Workspace-level dialectic query across ALL peers (cross-peer analysis)", cmd_ask, (
+        ("query", dict(nargs="?", default=None, help="Natural language question for the whole workspace")),
+        ("--level", dict(metavar="LEVEL", default=None, choices=REASONING_LEVELS, dest="level",
+                         help="Reasoning level (minimal/low/medium/high/max)")),
+        ("--scope", dict(metavar="NAME", default=None, help="Confine recall to a named scope (exclusive with --session)")),
+        ("--session", dict(metavar="NAME", default=None, help="Confine message retrieval to one session")),
+    )),
     ("enable", "Enable Honcho for the active profile", cmd_enable, ()),
     ("disable", "Disable Honcho for the active profile", cmd_disable, ()),
     ("sync", "Sync Honcho config to all existing profiles", cmd_sync, ()),
@@ -2088,7 +2216,7 @@ def honcho_command(args) -> None:
     if handler is None:
         return print(f"  Unknown honcho command: {sub}\n"
                      "  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync, "
-                     "queue, delete-session, delete-workspace, clone-session, upload\n")
+                     "queue, delete-session, delete-workspace, clone-session, upload, scope, ask\n")
     try:
         handler(args)
     except ConfigWriteRefused as e:

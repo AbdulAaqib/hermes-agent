@@ -952,15 +952,29 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
 
     def _tool_reasoning(self, args: dict) -> str:
         from plugins.memory.honcho.session import HonchoAuthError
+        from plugins.memory.honcho.structured_output import validate_response_schema
 
         if not (query := (args.get("query") or "").strip()):
             return tool_error("Missing required parameter: query")
+        scope = (args.get("scope") or "").strip() or None
+        sessions = [s for s in (args.get("sessions") or []) if isinstance(s, str) and s.strip()]
+        if scope and sessions:
+            return tool_error("scope and sessions are mutually exclusive: a scope is a named, persistent "
+                              "recall boundary; sessions is a one-off allowlist. Pick one.")
+        response_format = args.get("response_format")
+        if response_format is not None:
+            try:
+                response_format = validate_response_schema(response_format)
+            except ValueError as e:
+                return tool_error(f"Invalid response_format: {e}")
+        include_evidence = bool(args.get("include_evidence"))
         try:
             # Explicit reasoning bypasses the automatic-injection cap, and surfaces
             # timeouts/server errors as errors rather than an indistinguishable "no result".
-            result = self._manager.dialectic_query(
+            detailed = self._manager.dialectic_query_detailed(
                 self._session_key, query, reasoning_level=args.get("reasoning_level"),
-                peer=args.get("peer", "user"), apply_injection_cap=False, raise_errors=True,
+                peer=args.get("peer", "user"), response_format=response_format,
+                include_evidence=include_evidence, scope=scope, sessions=sessions or None,
             )
         except HonchoAuthError:
             raise  # rendered by handle_tool_call's auth-specific handler
@@ -974,7 +988,12 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
             )
         # Auto-injection respects the cadence gap after an explicit call.
         self._last_dialectic_turn = self._turn_count
-        return json.dumps({"result": result or "No result from Honcho."})
+        out: dict[str, Any] = {"result": detailed["content"] or "No result from Honcho."}
+        if include_evidence:
+            # None = evidence requested but not returned; empty conclusions = verified empty read.
+            ev = detailed["evidence"]
+            out["evidence"] = ev if ev is not None else {"conclusions": None}
+        return json.dumps(out)
 
     def _tool_context(self, args: dict) -> str:
         ctx = self._manager.get_session_context(self._session_key, peer=args.get("peer", "user"))

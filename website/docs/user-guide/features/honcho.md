@@ -263,6 +263,8 @@ hermes honcho delete-session  # Delete a session (async 202 cascade)
 hermes honcho delete-workspace # Delete the workspace (sessions first; 409 = still draining)
 hermes honcho clone-session   # Branch a session (optionally --up-to-message ID)
 hermes honcho upload <file>   # Ingest a document (PDF/text/JSON) as a peer (--peer/--session)
+hermes honcho scope           # Named scopes: list/create/add-session/status (--wait to poll)
+hermes honcho ask "<query>"   # Workspace-level dialectic across ALL peers (cross-peer analysis)
 ```
 
 ## Migrating from `hermes honcho`

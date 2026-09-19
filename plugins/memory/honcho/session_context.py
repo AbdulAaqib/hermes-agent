@@ -402,6 +402,68 @@ class SessionContextMixin:
             "Failed to fetch AI representation: %s",
         )
 
+    def _dialectic_chat_kwargs(self, session: Any, target_peer_id: str) -> tuple[Any, dict[str, Any]]:
+        """(chat peer, base kwargs) for a dialectic call: the AI peer observes others when
+        allowed (target=), otherwise each peer queries its own context."""
+        if self._ai_observes_others(session) and target_peer_id != session.assistant_peer_id:
+            return self._get_or_create_peer(session.assistant_peer_id), {"target": target_peer_id}
+        return self._get_or_create_peer(target_peer_id), {}
+
+    def _resolve_dialectic_call(
+        self, session_key: str, query: str, reasoning_level: str | None, peer: str,
+    ) -> tuple[Any, str, str, str] | None:
+        """(session, capped query, level, target_peer_id) shared by dialectic_query and
+        dialectic_query_detailed; None when the peer cannot be resolved."""
+        session = self._cached_session(session_key)
+        target_peer_id = self._resolve_peer_id(session, peer) if session else None
+        if target_peer_id is None:
+            return None
+        if len(query) > self._dialectic_max_input_chars:
+            query = query[:self._dialectic_max_input_chars].rsplit(" ", 1)[0]
+        level = reasoning_level if (self._dialectic_dynamic and reasoning_level) else self._dialectic_reasoning_level
+        return session, query, level, target_peer_id
+
+    def dialectic_query_detailed(
+        self, session_key: str, query: str, reasoning_level: str | None = None, peer: str = "user",
+        response_format: dict[str, Any] | None = None, include_evidence: bool = False,
+        scope: str | None = None, sessions: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Dialectic query with the SDK 2.5 structured surface: ``response_format`` (JSON Schema
+        dict, validated client-side by the caller) makes the answer a JSON string; ``scope`` /
+        ``sessions`` confine recall (mutually exclusive — combining them raises ValueError, the
+        same rejection the SDK/server issues); ``include_evidence`` attaches what the dialectic
+        read. Returns {"content", "evidence", "structured"}; ``evidence`` is None unless
+        requested (distinct from an empty conclusions list = verified empty read)."""
+        scope_list = [s for s in sessions or [] if s]
+        if scope and scope_list:
+            raise ValueError("scope and sessions are mutually exclusive: a scope is a named, persistent recall "
+                             "boundary; sessions is a one-off allowlist. Pick one.")
+        from plugins.memory.honcho.structured_output import format_evidence
+
+        resolved = self._resolve_dialectic_call(session_key, query, reasoning_level, peer)
+        if resolved is None:
+            return {"content": "", "evidence": None, "structured": response_format is not None}
+        session, query, level, target_peer_id = resolved
+        chat_peer, base_kwargs = self._dialectic_chat_kwargs(session, target_peer_id)
+
+        def _chat() -> Any:
+            return chat_peer.chat(
+                query, **base_kwargs, reasoning_level=level,
+                response_format=response_format, include_evidence=include_evidence,
+                scope=scope, sessions=scope_list or None,
+            )
+
+        result = self._authed_call("dialectic query", _chat)
+        if include_evidence:
+            content = getattr(result, "content", None)
+            evidence = format_evidence(getattr(result, "evidence", None))
+        else:
+            content, evidence = result, None
+        if content is None:
+            content = ""
+        return {"content": content if isinstance(content, str) else str(content),
+                "evidence": evidence, "structured": response_format is not None}
+
     def dialectic_query(
         self, session_key: str, query: str, reasoning_level: str | None = None, peer: str = "user",
         apply_injection_cap: bool = True, raise_errors: bool = False,
