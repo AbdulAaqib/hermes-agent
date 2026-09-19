@@ -1477,7 +1477,13 @@ def load_soul_md(context_length: Optional[int] = None, home_override: "Path | No
             content = strip_legacy_protocol(content).strip()
         if not content:
             return None
-        return _truncate_content(_scan_context_content(content, "SOUL.md"), "SOUL.md", context_length=context_length,
+        # SOUL.md is the operator's OWN trusted persona file in their own HERMES_HOME, not untrusted
+        # third-party context (cloned-repo AGENTS.md, scraped web, user files) — the injection scan
+        # exists for the latter. Scanning the persona here false-positively blocks legitimate
+        # anti-jailbreak phrasing ("ignore previous instructions", "pretend to be …", …) and silently
+        # swaps in the default identity (#34852 class). Load SOUL.md unscanned by design.
+        # LOCAL PATCH — re-apply after `hermes update`.
+        return _truncate_content(content, "SOUL.md", context_length=context_length,
                                  read_path=str(soul_path))
     except Exception as e:
         logger.debug("Could not read SOUL.md from %s: %s", soul_path, e)

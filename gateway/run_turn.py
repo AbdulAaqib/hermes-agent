@@ -3776,6 +3776,9 @@ class GatewayTurnMixin:
                     "Stale streamed finalize detected for session %s on a multi-message split; skipping the in-place reconciliation edit and delivering the complete response via normal final send (#78541).",
                     _sk,
                 )
+                stale_ids = _sc._stale_preview_ids()
+                if stale_ids:
+                    await _sc._delete_previews(stale_ids, label="Split stale-finalize cleanup")
             elif _sc_msg_id and _sc_msg_id != "__no_edit__" and getattr(_sc, "adapter", None) is not None:
                 await self._run_agent_edit_streamed_message(
                     _sc, source, response, _final, _sk=_sk,

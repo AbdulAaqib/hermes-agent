@@ -5143,10 +5143,21 @@ class TelegramAdapter(BasePlatformAdapter):
             return _ph(f'*{_escape_mdv2(inner)}*')
 
         text = re.sub(r'^#{1,6}\s+(.+)$', _convert_header, text, flags=re.MULTILINE)
-        # 5) Bold **text** → *text*; 6) Italic *text* → _text_ ([^*\n]+ keeps matches on one line, or *
-        # bullet lists corrupt); 7) Strikethrough ~~text~~ → ~text~; 8) Spoiler ||text|| kept as-is.
-        text = re.sub(r'\*\*(.+?)\*\*', _ph_wrap('*', '*'), text)
-        text = re.sub(r'\*([^*\n]+)\*', _ph_wrap('_', '_'), text)
+        # 5) Bold **text** → *text* (spans newlines; nested italic converted first).
+        def _convert_bold(m):
+            inner = m.group(1)
+            # 5a) Nested italic *inner* → _inner_ inside the bold span
+            inner = re.sub(r'(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s|\*)\*(?!\*)', _ph_wrap('_', '_'), inner)
+            # 5b) Nested underscore italic _inner_ → _inner_ inside the bold span
+            inner = re.sub(r'(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])', _ph_wrap('_', '_'), inner)
+            return _ph(f'*{_escape_mdv2(inner)}*')
+
+        text = re.sub(r'(?<!\*)\*\*(?!\s)([\s\S]+?)(?<!\s|\*)\*\*(?!\*)', _convert_bold, text)
+        # 6) Italic *text* → _text_ (flanking rules: no whitespace immediately inside delimiters).
+        text = re.sub(r'(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s|\*)\*(?!\*)', _ph_wrap('_', '_'), text)
+        # 6.5) Italic _text_ → _text_ (word-boundary-safe; protects snake_case).
+        text = re.sub(r'(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])', _ph_wrap('_', '_'), text)
+        # 7) Strikethrough ~~text~~ → ~text~; 8) Spoiler ||text|| kept as-is.
         text = re.sub(r'~~(.+?)~~', _ph_wrap('~', '~'), text)
         text = re.sub(r'\|\|(.+?)\|\|', _ph_wrap('||', '||'), text)
         # 9) Blockquotes: protect leading > from escaping; expandable quotes (**> starts, trailing || ends).
@@ -5157,6 +5168,13 @@ class TelegramAdapter(BasePlatformAdapter):
             return _ph(f'{prefix} {_escape_mdv2(content)}')
 
         text = re.sub(r'^((?:\*\*)?>{1,3}) (.+)$', _convert_blockquote, text, flags=re.MULTILINE)
+        # 9.5) Bullet list markers at line start → • (preserves indentation).
+        def _convert_bullet(m):
+            indent = m.group(1)
+            content = m.group(2)
+            return _ph(f'{indent}• {_escape_mdv2(content)}')
+
+        text = re.sub(r'^([ \t]*)(?:\*|\-)\s+(.*)$', _convert_bullet, text, flags=re.MULTILINE)
         # 10) Escape remaining special characters in plain text
         text = _escape_mdv2(text)
         # 11) Restore placeholders in reverse insertion order so nested placeholders resolve.

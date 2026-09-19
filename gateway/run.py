@@ -644,6 +644,13 @@ def _sanitize_gateway_final_response(platform: Any, text: str) -> str:
     if str(text).strip().startswith(INTERRUPT_WAITING_FOR_MODEL_PREFIX):
         return ""
 
+    # Strip a leaked chain-of-thought preamble when a reasoning-off model narrated its
+    # thinking into content (safety net beside the reasoning-channel config fix). Chat
+    # surfaces never see the reasoning field, so any self-narration in the final response
+    # is a leak and only the reply after the last stage-direction line should reach the user.
+    from gateway.response_filters import strip_chain_of_thought_preamble
+    text = strip_chain_of_thought_preamble(str(text))
+
     redacted = _redact_gateway_user_facing_secrets(str(text))
     if _looks_like_gateway_provider_error(redacted):
         return _gateway_provider_error_reply(redacted)

@@ -46,6 +46,7 @@ class FinalizeCaptureAdapter(BasePlatformAdapter):
         super().__init__(PlatformConfig(enabled=True, token="***"), platform)
         self.sent = []
         self.edits = []
+        self.deleted = []
         self._next_id = 0
 
     async def connect(self, *, is_reconnect: bool = False) -> bool:
@@ -74,6 +75,10 @@ class FinalizeCaptureAdapter(BasePlatformAdapter):
             }
         )
         return SendResult(success=True, message_id=message_id)
+
+    async def delete_message(self, chat_id, message_id) -> bool:
+        self.deleted.append(message_id)
+        return True
 
     async def send_typing(self, chat_id, metadata=None) -> None:
         return None
@@ -631,3 +636,46 @@ async def test_empty_fallback_final_after_split_records_only_what_survives():
     # The head is gone from the chat, so the complete answer was NOT delivered:
     # the gateway must be told this is a mismatch and send it.
     assert consumer.delivered_final_matches(complete) is False
+
+
+@pytest.mark.asyncio
+async def test_split_stale_finalize_deletes_preview_chunks():
+    """When a stale finalize is detected on a split-delivery turn, the stale
+    preview/chunk message ids must be best-effort deleted before the normal
+    final send delivers the complete response."""
+    adapter = FinalizeCaptureAdapter()
+    runner = _make_runner(adapter)
+
+    consumer = GatewayStreamConsumer(
+        adapter,
+        "chat-1",
+        StreamConsumerConfig(cursor=""),
+    )
+    consumer._turn_split_delivery = True
+    consumer._preview_message_ids = {"chunk-a", "chunk-b"}
+    consumer._final_content_delivered = True
+    consumer._final_response_sent = False
+
+    from gateway.turn_context import TurnContext
+
+    source = SessionSource(
+        platform=Platform.TELEGRAM,
+        chat_id="-1001",
+        chat_type="group",
+    )
+    turn_ctx = TurnContext(source=source, session_key="sess-test")
+    turn_ctx.stream_consumer_holder[0] = consumer
+
+    response = {
+        "final_response": FULL_RESPONSE,
+        "response_previewed": False,
+        "response_transformed": False,
+    }
+
+    await runner._run_agent_mark_streamed_delivery(response, turn_ctx)
+
+    assert "chunk-a" in adapter.deleted
+    assert "chunk-b" in adapter.deleted
+    assert not response.get("already_sent"), (
+        "already_sent must NOT be set so the normal final send still happens"
+    )

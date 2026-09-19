@@ -657,3 +657,96 @@ class TestTelegramGuestMentionGating:
         message.caption_entities = [_guest_mention_entity(text)]
 
         assert adapter._should_process_message(message) is True
+
+
+# =========================================================================
+# format_message - regression fixes for MarkdownV2 conversion bugs
+# =========================================================================
+
+
+class TestFormatMessageMarkdownV2Bugs:
+    """Regression tests for literal-asterisk bugs in the MarkdownV2 formatter."""
+
+    def test_bold_spans_multiple_lines(self, adapter):
+        r"""**text** must match across newlines so the delimiters are not
+        left as literal escaped asterisks."""
+        result = adapter.format_message("**Bold\nspans two lines**")
+        assert "*Bold\nspans two lines*" in result
+        assert "**" not in result
+        assert r"\*\*" not in result
+
+    def test_literal_asterisk_does_not_corrupt_italic(self, adapter):
+        r"""A standalone `*` used as multiplication must not pair with a real
+        italic span. Only `emphasis` should be italicized; the literal `*`
+        must appear as `\*` in the MarkdownV2 output."""
+        result = adapter.format_message("2 * 3 = 6 and *emphasis*")
+        assert "_emphasis_" in result
+        # The literal multiplication asterisk must be escaped
+        assert r"\*" in result
+        # No bare (unescaped) asterisks should remain in the output
+        bare = [m.start() for m in re.finditer(r'(?<!\\)\*', result)]
+        assert len(bare) == 0, f"found bare asterisks at positions {bare}: {result!r}"
+
+    def test_nested_italic_inside_bold(self, adapter):
+        r"""Italic nested inside bold must convert to `_inner_` inside the
+        MarkdownV2 `*...*` bold span."""
+        result = adapter.format_message("**outer *inner* end**")
+        assert "*outer _inner_ end*" in result
+        assert "**" not in result
+
+    def test_bullet_list_star_converted(self, adapter):
+        result = adapter.format_message("* item one\n* item two")
+        assert "• item one" in result
+        assert "• item two" in result
+        assert "* item" not in result
+
+    def test_bullet_list_dash_converted(self, adapter):
+        result = adapter.format_message("- item one\n- item two")
+        assert "• item one" in result
+        assert "• item two" in result
+        assert "- item" not in result
+
+    def test_nested_bullet_preserved_indentation(self, adapter):
+        result = adapter.format_message("  * sub item")
+        assert "  • sub item" in result
+
+    def test_bullet_does_not_touch_horizontal_rule(self, adapter):
+        r"""Horizontal rules (`---`, `***`, `___` alone on a line) must not
+        be turned into bullets."""
+        result = adapter.format_message("---\n***\n___")
+        assert "•" not in result
+        # They should be escaped as literal characters
+        assert r"\-\-\-" in result
+        assert r"\*\*\*" in result
+        assert r"\_\_\_" in result
+
+    def test_underscore_italic_converted(self, adapter):
+        r"""_text_ must be converted to MarkdownV2 italic, not escaped as \_text\_."""
+        result = adapter.format_message("_this is a sentence_")
+        assert "_this is a sentence_" in result
+        assert r"\_this" not in result
+        assert r"\_sentence\_" not in result
+
+    def test_snake_case_not_converted_to_italic(self, adapter):
+        r"""Underscores in identifiers must stay escaped as literals."""
+        result = adapter.format_message("file_name.py and snake_case_var")
+        assert r"file\_name\.py" in result
+        assert r"snake\_case\_var" in result
+        # No italic underscores
+        assert "_file_name_" not in result
+        assert "_snake_case_var_" not in result
+
+    def test_nested_underscore_italic_inside_bold(self, adapter):
+        r"""Underscore italic nested inside bold must convert correctly."""
+        result = adapter.format_message("**bold with _nested italic_ inside**")
+        assert "*bold with _nested italic_ inside*" in result
+        assert "**" not in result
+
+    def test_mixed_underscore_italic_and_snake_case(self, adapter):
+        r"""Only real italic phrases convert; identifiers stay literal."""
+        result = adapter.format_message(
+            "Some prose with _italic phrase_ and a snake_case_identifier in the same sentence."
+        )
+        assert "_italic phrase_" in result
+        assert r"snake\_case\_identifier" in result
+        assert r"\_italic" not in result

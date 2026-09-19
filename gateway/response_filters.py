@@ -6,6 +6,7 @@ not what should be persisted in conversation history.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Any
 
@@ -37,6 +38,35 @@ def _strip_edge_silence_punctuation(text: str) -> str:
     return text[start:end].strip()
 
 
+_BRACKETED_SENTINEL_RE = re.compile(r"^\[([A-Z_ ]{3,14})\]$")
+
+
+def _levenshtein_within(a: str, b: str, limit: int) -> bool:
+    """True when edit distance(a, b) <= limit, with early exits."""
+    if abs(len(a) - len(b)) > limit:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if min(cur) > limit:
+            return False
+        prev = cur
+    return prev[-1] <= limit
+
+
+def _is_near_silent_bracket(canonical_candidate: str) -> bool:
+    """True for a whole-response bracketed token within edit distance 2 of [SILENT].
+
+    Only canonical (uppercased, whitespace-collapsed) whole-candidate forms are
+    accepted, so prose mentioning brackets and unrelated markers like [MUTED]
+    never match.
+    """
+    m = _BRACKETED_SENTINEL_RE.match(canonical_candidate)
+    return bool(m) and _levenshtein_within(m.group(1).replace(" ", ""), "SILENT", 2)
+
+
 def _canonical_silence_candidates(text: Any) -> tuple[str, ...]:
     """Canonical forms of a short marker-sized response; ``()`` when not a candidate at all."""
     stripped = text.strip() if isinstance(text, str) else ""
@@ -45,6 +75,47 @@ def _canonical_silence_candidates(text: Any) -> tuple[str, ...]:
     depunctuated = _strip_edge_silence_punctuation(stripped)
     forms = (stripped,) if depunctuated == stripped else (stripped, depunctuated)
     return tuple(_canonical_silence_candidate(f) for f in forms)
+
+
+# Deterministic safety net for model-side self-narration that leaks into the delivered
+# content. With reasoning disabled on the wire, DeepSeek-family models occasionally emit
+# their chain-of-thought as plain content (non-deterministic), so the visible text becomes
+# "CoT preamble" + "actual reply". The primary fix is routing thinking into the reasoning
+# channel (agent.reasoning_overrides); this scrubber backstops the residual leak at delivery
+# by cutting at the last self-directed stage-direction line. DeepSeek narrates instructions
+# to itself ("Reply in voice", "per my voice rules") right before producing the persona
+# answer, so the final reply is everything after the LAST such paragraph.
+_COT_STAGE_DIRECTION_MARKERS = (
+    "reply in voice", "per my voice rules", "my voice rules", "morning/evening check done",
+    "good news first", "then the warmth", "keep it short", "raw word in the surface",
+    "so the answer to", "let me give him", "let me give her", "answer in voice",
+)
+_COT_SCRUB_MIN_CHARS = 400
+
+
+def strip_chain_of_thought_preamble(text: Any) -> str:
+    """Remove a leaked chain-of-thought preamble from a final response.
+
+    Returns the text unchanged when there is no evidence of model self-narration (markers,
+    length, trailing content). The heuristic is deliberately narrow so legitimate persona
+    replies are never truncated: it only fires when the response is long, at least one
+    stage-direction marker paragraph is present, and a non-empty reply remains after the
+    last marker paragraph.
+    """
+    if not isinstance(text, str) or not text.strip() or len(text) < _COT_SCRUB_MIN_CHARS:
+        return text
+    paragraphs = [p.strip() for p in text.split("\n\n")]
+    last_marker_idx = -1
+    for i, para in enumerate(paragraphs):
+        lower = para.lower()
+        if any(m in lower for m in _COT_STAGE_DIRECTION_MARKERS):
+            last_marker_idx = i
+    if last_marker_idx == -1:
+        return text
+    tail = "".join(p + "\n\n" for p in paragraphs[last_marker_idx + 1:]).strip()
+    if not tail:
+        return text
+    return tail
 
 
 def is_intentional_silence_response(response: Any) -> bool:
@@ -62,7 +133,9 @@ def is_autonomous_silence_response(response: Any) -> bool:
     Models reliably bracket ``[SILENT]`` with a short note, so unlike the
     interactive EXACT rule this also suppresses when a marker sits on its own
     first/last line or the bracketed sentinel opens the response (``[SILENT] No
-    changes detected``).  A token buried mid-sentence is still delivered.
+    changes detected``).  A token buried mid-sentence is still delivered.  A
+    bracketed near-miss typo of the sentinel (``[SLIENT]``) still counts as
+    silence; anything else bracketed does not.
     Shares :data:`LIVE_GATEWAY_SILENT_MARKERS` so the two sets cannot drift.
     """
     stripped = response.strip() if isinstance(response, str) else ""
@@ -70,8 +143,12 @@ def is_autonomous_silence_response(response: Any) -> bool:
         return False
     lines = [ln for ln in stripped.splitlines() if ln.strip()]
     # Bracketed form only for the prefix rule, so a bare "Silent retry succeeded" is NOT swallowed.
-    return stripped.upper().startswith("[SILENT]") or any(
-        _canonical_silence_candidate(c) in LIVE_GATEWAY_SILENT_MARKERS for c in (stripped, lines[0], lines[-1])
+    candidates = (_canonical_silence_candidate(c) for c in (stripped, lines[0], lines[-1]))
+    candidates = tuple(candidates)
+    return (
+        stripped.upper().startswith("[SILENT]")
+        or any(c in LIVE_GATEWAY_SILENT_MARKERS for c in candidates)
+        or any(_is_near_silent_bracket(c) for c in candidates)
     )
 
 

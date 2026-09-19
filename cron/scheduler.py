@@ -1854,6 +1854,14 @@ def _final_response_from_result(result: dict, job_id: str, job_name: str, AIAgen
                 "Job '%s': abnormal empty turn (%s) — suppressing explainer for cron delivery",
                 job_id, turn_exit_reason)
             final_response = ""
+    # Strip a leaked chain-of-thought preamble before cron delivery (same safety net as the
+    # gateway chat path: reasoning-off DeepSeek-family models sometimes narrate thinking into
+    # content, and only the reply after the last stage-direction line should reach Q).
+    try:
+        from gateway.response_filters import strip_chain_of_thought_preamble
+        final_response = strip_chain_of_thought_preamble(final_response)
+    except Exception:
+        pass
     return final_response
 
 

@@ -7,6 +7,25 @@ past that); see the **routing table** at the end and read the area file before e
 
 **Never give up on the right solution.**
 
+## SOUL.md guardrail (non-negotiable)
+
+`SOUL.md` in this repo is a **private, NSFW persona file** owned by the operator (Q). It must be
+treated as strict private content:
+
+- **Do NOT read it** unless Q explicitly authorizes reading it in the current session.
+- **Do NOT quote, summarize, reproduce, or comment on its contents** in any output, diff,
+  PR, or commit message.
+- **Do NOT edit it** except with Q's explicit say-so.
+- When working on the README or documentation that touches persona/tone: **do not read or
+  import SOUL.md**, and do **not** sanitize, expand, "tidy," or describe its NSFW content.
+  Reference it only by filename and only when a doc must name it (as in the OpenClaw
+  migration section). Never paste its prose into docs.
+- If a task would require SOUL.md's contents, stop and ask rather than reading it for
+  yourself.
+
+If you need a safe, SFW description of the operator persona, read `references/ASUNA_SFW.md`
+instead — never SOUL.md.
+
 ## What Hermes Is
 
 Hermes is a personal AI agent that runs the same agent core across a CLI, a messaging
