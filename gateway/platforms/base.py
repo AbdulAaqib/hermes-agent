@@ -433,6 +433,48 @@ def streaming_tts_should_skip_whole_file(completed_turns: set[str], session_key:
     return bool(turn_key and turn_key in completed_turns)
 
 
+# Bot API caption cap: a caption longer than this is rejected, so longer replies keep the
+# separate text message + captionless photo split.
+CAPTION_MERGE_TEXT_LIMIT = 1024
+
+
+def adapter_supports_caption_merge(adapter) -> bool:
+    """True when short text can ride a photo as its caption (ONE message instead of text +
+    captionless photo). Telegram renders captions natively; other adapters fall back to
+    text-shaped image sends where merging would silently change what the user sees."""
+    return getattr(adapter, "platform", None) == Platform.TELEGRAM
+
+
+def single_image_caption_merge_target(images, media_files, local_files=(), *,
+                                      force_document: bool = False):
+    """Return the response's ONLY attachment when it is a single image, as a
+    ``(sender_kwarg, value)`` pair for ``send_image`` / ``send_animation`` / ``send_image_file``;
+    ``None`` when the response carries anything else (multiple images, voice, video, documents)
+    or ``[[as_document]]`` applies (those must keep their uncompressed document route)."""
+    if force_document:
+        return None
+    image_targets: list = []
+    other_attachment = False
+    for url, _alt in images or []:
+        if BasePlatformAdapter._is_animation_url(url):
+            image_targets.append(("animation_url", url))
+        else:
+            image_targets.append(("image_url", url))
+    for path, is_voice in media_files or []:
+        if not is_voice and Path(path).suffix.lower() in _IMAGE_EXTS:
+            image_targets.append(("image_path", path))
+        else:
+            other_attachment = True
+    for path in local_files or []:
+        if Path(path).suffix.lower() in _IMAGE_EXTS:
+            image_targets.append(("image_path", path))
+        else:
+            other_attachment = True
+    if other_attachment or len(image_targets) != 1:
+        return None
+    return image_targets[0]
+
+
 GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE = (
     "Secure secret entry is not supported over messaging. "
     "Load this skill in the local CLI to be prompted, or add the key to ~/.hermes/.env manually.")
@@ -3967,6 +4009,54 @@ class BasePlatformAdapter(ABC):
         if ephemeral_ttl and ephemeral_ttl > 0 and result.success and result.message_id:
             delivery_adapter._schedule_ephemeral_delete(event.source.chat_id, result.message_id, ephemeral_ttl)
 
+    async def _deliver_single_image_with_caption(
+        self, event: MessageEvent, session_key: str, extracted: "_ExtractedResponse",
+        metadata: Dict[str, Any], is_ephemeral_response: bool, ephemeral_ttl: int,
+        record_delivery: Callable,
+    ) -> bool:
+        """Deliver "short text + exactly one image" as ONE photo-with-caption message instead of a
+        text message followed by a captionless photo (caption-capable adapters only; the text must
+        fit the platform's caption limit). The text keeps the delivery-ledger bracket: the photo
+        send IS the final send. Returns False on any ineligibility or send failure so the caller
+        falls back to the regular text + attachments split unchanged."""
+        text = extracted.text_content
+        if (
+            not adapter_supports_caption_merge(self)
+            or not text
+            or len(text) > CAPTION_MERGE_TEXT_LIMIT
+        ):
+            return False
+        target = single_image_caption_merge_target(
+            extracted.images, extracted.media_files, extracted.local_files,
+            force_document=extracted.force_document_attachments)
+        if target is None:
+            return False
+        kw, value = target
+        delivery_adapter = self._final_delivery_adapter(event.source)
+        sender = {"image_url": delivery_adapter.send_image,
+                  "animation_url": delivery_adapter.send_animation,
+                  "image_path": delivery_adapter.send_image_file}[kw]
+        try:
+            obligation_id = await self._record_delivery_obligation(
+                event, session_key, text, delivery_adapter, is_ephemeral_response)
+            logger.info("[%s] Sending response as image caption (%d chars) to %s",
+                        delivery_adapter.name, len(text), event.source.chat_id)
+            result = await sender(
+                chat_id=event.source.chat_id, caption=text,
+                reply_to=_reply_anchor_for_event(event), metadata=metadata, **{kw: value})
+            if obligation_id is not None:
+                await self._finalize_delivery_obligation(obligation_id, result, event, delivery_adapter)
+        except Exception as err:
+            logger.warning("[%s] caption-merge send failed (%s); falling back to split delivery",
+                           self.name, err)
+            return False
+        record_delivery(result)
+        if not getattr(result, "success", False):
+            return False
+        if ephemeral_ttl and ephemeral_ttl > 0 and result.message_id:
+            delivery_adapter._schedule_ephemeral_delete(event.source.chat_id, result.message_id, ephemeral_ttl)
+        return True
+
     async def _notify_turn_error(self, event: MessageEvent, e: BaseException) -> Optional[dict]:
         """Tell the user a turn failed rather than leaving radio silence (last resort:
         a failing notice is logged, never raised). Returns the thread metadata used."""
@@ -4151,14 +4241,23 @@ class BasePlatformAdapter(ABC):
                 if not _tts_paths and _tts_requested_path is not None:
                     with contextlib.suppress(OSError):
                         os.remove(_tts_requested_path)
+                # One-message delivery: short text + exactly one image rides as the photo's
+                # caption (Telegram). When merged, the image is the ONLY attachment by
+                # construction, so the text send and the attachment pass are both skipped.
+                _caption_merged = False
                 if text_content and not _tts_caption_delivered:
-                    await self._send_final_text(
-                        event, session_key, text_content, _final_thread_metadata,
+                    _caption_merged = await self._deliver_single_image_with_caption(
+                        event, session_key, extracted, _final_thread_metadata,
                         is_ephemeral_response, _ephemeral_ttl, _record_delivery)
-                await self._deliver_attachments(
-                    event, extracted, _final_thread_metadata,
-                    anything_sent=delivery_attempted or _tts_caption_delivered,
-                    record_delivery=_record_delivery)
+                if not _caption_merged:
+                    if text_content and not _tts_caption_delivered:
+                        await self._send_final_text(
+                            event, session_key, text_content, _final_thread_metadata,
+                            is_ephemeral_response, _ephemeral_ttl, _record_delivery)
+                    await self._deliver_attachments(
+                        event, extracted, _final_thread_metadata,
+                        anything_sent=delivery_attempted or _tts_caption_delivered,
+                        record_delivery=_record_delivery)
             processing_ok = delivery_succeeded if delivery_attempted else not bool(response)
             # Clean up the per-turn streaming-TTS flag.
             self._streaming_tts_completed_turns.discard(self._streaming_tts_turn_key(

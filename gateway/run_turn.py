@@ -2272,6 +2272,34 @@ class GatewayTurnMixin:
                 media_files, response = adapter.extract_media(response)
                 media_files = BasePlatformAdapter.filter_media_delivery_paths(media_files)
                 images, text_content = adapter.extract_images(response)
+            # One-message delivery: short text + exactly one image rides as the photo's caption on
+            # caption-capable platforms (Telegram) instead of text message + captionless photo.
+            from gateway.platforms.base import (
+                CAPTION_MERGE_TEXT_LIMIT as _CAPTION_LIMIT,
+                adapter_supports_caption_merge as _caption_merge_ok,
+                single_image_caption_merge_target as _caption_merge_target,
+            )
+            _merged_delivery = False
+            _merge_text = header + text_content if text_content else ""
+            _merge = (
+                _caption_merge_target(images, media_files)
+                if _merge_text and len(_merge_text) <= _CAPTION_LIMIT and _caption_merge_ok(adapter)
+                else None
+            )
+            if _merge is not None:
+                _kw, _value = _merge
+                _sender = {"image_url": adapter.send_image,
+                           "animation_url": adapter.send_animation,
+                           "image_path": adapter.send_image_file}[_kw]
+                try:
+                    _merge_result = await _sender(
+                        chat_id=source.chat_id, caption=_merge_text,
+                        metadata=_thread_metadata, **{_kw: _value})
+                    _merged_delivery = bool(getattr(_merge_result, "success", False))
+                except Exception as _merge_err:
+                    logger.warning("Background task caption-merge send failed: %s", _merge_err)
+            if _merged_delivery:
+                return
             if text_content:
                 await adapter.send(chat_id=source.chat_id, content=header + text_content, metadata=_thread_metadata)
             elif not images and not media_files:

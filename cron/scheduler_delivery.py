@@ -14,6 +14,7 @@ import contextlib
 import contextvars
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,20 @@ from hermes_cli._subprocess_compat import windows_hide_flags
 
 # Log-record parity with the origin module.
 logger = logging.getLogger("cron.scheduler")
+
+# Lines that exist for the transcript/memory layer and must never reach the chat surface:
+# bookkeeping markers (LIFE_LOG:) and any residual MEDIA: attachment tag that survived
+# extraction (a wrapped path, a stray tag) — both render as raw gibberish on Telegram.
+_HIDDEN_DELIVERY_LINE_RE = re.compile(r"^\s*(?:LIFE_LOG:.*|MEDIA:\S*)\s*$", re.MULTILINE)
+
+
+def _strip_hidden_delivery_lines(text: str) -> str:
+    """Drop bookkeeping (LIFE_LOG:) and residual MEDIA: lines, then collapse the blank
+    gap they leave so the delivered message doesn't show a hole. Fail-open on bad input."""
+    if not text:
+        return text
+    cleaned = _HIDDEN_DELIVERY_LINE_RE.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip("\n")
 
 
 # Validates user-supplied delivery platform names, preventing env-var enumeration via crafted names.
@@ -925,10 +940,12 @@ _IMAGE_EXTS = frozenset({'.jpg', '.jpeg', '.png', '.webp', '.gif'})
 
 def _send_media_via_adapter(
     adapter, chat_id: str, media_files: list, metadata: dict | None, loop, job: dict, platform=None,
+    caption: str | None = None,
 ) -> list:
     """Send MEDIA files as native attachments (routed by extension, as in
     _process_message_background). Returns per-file error strings so a dropped attachment surfaces
-    in run status, not just the gateway log."""
+    in run status, not just the gateway log. ``caption`` rides the sends (single-image
+    caption-merge passes the brief text so it arrives as ONE photo message)."""
     from gateway.platforms.base import (
         BasePlatformAdapter, should_send_media_as_audio, validate_media_delivery_path)
     from agent.async_utils import safe_schedule_threadsafe
@@ -958,8 +975,10 @@ def _send_media_via_adapter(
                 method, path_kw = "send_image_file", "image_path"
             else:
                 method, path_kw = "send_document", "file_path"
-            coro = getattr(adapter, method)(
-                chat_id=chat_id, metadata=metadata, **{path_kw: media_path})
+            send_kwargs = {"chat_id": chat_id, "metadata": metadata, path_kw: media_path}
+            if caption is not None:
+                send_kwargs["caption"] = caption
+            coro = getattr(adapter, method)(**send_kwargs)
             future = safe_schedule_threadsafe(coro, loop)
             if future is None:
                 _note_target_error(
@@ -1344,7 +1363,9 @@ def _live_send_text(
 
 
 def _live_send_media(
-    t: _TargetDelivery, media_metadata: dict, media_files: list, delivery_errors: list) -> None:
+    t: _TargetDelivery, media_metadata: dict, media_files: list, delivery_errors: list,
+    caption: str | None = None,
+) -> None:
     """Send extracted media as native attachments with the same routing as the text send."""
     routed_media_metadata = dict(media_metadata or {})
     if t.is_relay:
@@ -1355,9 +1376,12 @@ def _live_send_media(
                 routed_media_metadata["user_id"] = logical_home.user_id
             if logical_home.scope_id:
                 routed_media_metadata["scope_id"] = logical_home.scope_id
+    _media_kwargs = {"platform": t.platform}
+    if caption is not None:
+        _media_kwargs["caption"] = caption
     _media_errors = _send_media_via_adapter(
         t.runtime_adapter, t.chat_id, media_files, routed_media_metadata or None, t.loop, t.job,
-        platform=t.platform,
+        **_media_kwargs,
     )
     # Surface per-file failures into run status: text delivered but attachment lost is not ok.
     for _me in _media_errors:
@@ -1428,12 +1452,36 @@ def _deliver_via_live_adapter(
         # the same platform routing as live messages (Telegram's three-mode topic routing).
         text_to_send = cleaned_text.strip()
         adapter_ok, timed_out, delivered_message_id = True, False, None
+        # One-message delivery: a brief that is short text + exactly one image rides as the
+        # photo's caption (Telegram caption cap) instead of text message + captionless photo.
+        from gateway.platforms.base import (
+            CAPTION_MERGE_TEXT_LIMIT, adapter_supports_caption_merge,
+            single_image_caption_merge_target)
+        caption_merge = (
+            bool(text_to_send)
+            and len(text_to_send) <= CAPTION_MERGE_TEXT_LIMIT
+            and single_image_caption_merge_target([], media_files) is not None
+            and adapter_supports_caption_merge(t.runtime_adapter)
+        )
+        media_pending = bool(media_files)
         if not text_to_send and not media_files:
             # Fail closed so the run reports the empty payload.
             _note_target_error(
                 job, f"live adapter send skipped (empty text and no media) for {t.where}",
                 target_errors)
             adapter_ok = False
+        elif caption_merge:
+            pre_media_errors = len(delivery_errors)
+            _live_send_media(t, media_metadata, media_files, delivery_errors, caption=text_to_send)
+            media_pending = False  # attempted: delivered with the caption, or error surfaced
+            if len(delivery_errors) > pre_media_errors:
+                # The photo could not carry the text — deliver the text on its own so the brief
+                # is never lost (the photo may still have landed; never resend it).
+                adapter_ok, timed_out, delivered_message_id = _live_send_text(
+                    t, text_to_send, route_thread_id, route_metadata,
+                    target_errors=target_errors, delivery_errors=delivery_errors,
+                    unverified_targets=unverified_targets,
+                )
         elif text_to_send:
             adapter_ok, timed_out, delivered_message_id = _live_send_text(
                 t, text_to_send, route_thread_id, route_metadata,
@@ -1449,9 +1497,9 @@ def _deliver_via_live_adapter(
         # gateway loop is contended, so each media send would also block its 30s budget, and the text
         # payload is already assumed delivered (#38922). Record the skipped attachments so the drop is
         # visible rather than silently lost.
-        if adapter_ok and not timed_out and media_files:
+        if adapter_ok and not timed_out and media_pending:
             _live_send_media(t, media_metadata, media_files, delivery_errors)
-        elif timed_out and media_files:
+        elif timed_out and media_pending:
             _note_target_error(
                 job,
                 f"{len(media_files)} media attachment(s) not delivered to "
@@ -1760,6 +1808,7 @@ def _deliver_result(
     from gateway.media_policy import apply_media_policy_env
     apply_media_policy_env(user_cfg)
     media_files, cleaned_delivery_content = BasePlatformAdapter.extract_media(delivery_content)
+    cleaned_delivery_content = _strip_hidden_delivery_lines(cleaned_delivery_content)
     requested_media = len(media_files)
     media_files = BasePlatformAdapter.filter_media_delivery_paths(media_files)
     # Policy-dropped attachments will never be sent on ANY lane — record them in run status.
