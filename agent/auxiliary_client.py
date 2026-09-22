@@ -3641,6 +3641,9 @@ def _recover_provider_pool(provider: str, exc: Exception, *, failed_api_key: str
         next_entry = pool.mark_exhausted_and_rotate(
             status_code=status_code if status_code is not None else fallback_status,
             error_context=error_context, api_key_hint=failed_api_key or None,
+            # Auxiliary work may rotate shared credentials, but it must not
+            # quarantine the only key the owning main route can still try.
+            require_alternative=True,
         )
         if next_entry is None:
             return False
