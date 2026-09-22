@@ -55,6 +55,21 @@ def test_aux_failure_preserves_single_key_for_main_route(tmp_path, monkeypatch, 
     assert main_entry.last_status is None
 
 
+def test_aux_auth_failure_exhausts_single_rejected_key(tmp_path, monkeypatch):
+    from agent.auxiliary_client import _recover_provider_pool
+    from agent.credential_pool import STATUS_EXHAUSTED, load_pool
+
+    _write_openrouter_pool(tmp_path, monkeypatch, ["rejected-key"])
+
+    assert _recover_provider_pool(
+        "openrouter", _ProviderError(401), failed_api_key="rejected-key"
+    ) is False
+
+    pool = load_pool("openrouter")
+    assert pool.entries()[0].last_status == STATUS_EXHAUSTED
+    assert pool.select() is None
+
+
 def test_aux_failure_still_rotates_to_distinct_key(tmp_path, monkeypatch):
     from agent.auxiliary_client import _recover_provider_pool
     from agent.credential_pool import STATUS_EXHAUSTED, load_pool
