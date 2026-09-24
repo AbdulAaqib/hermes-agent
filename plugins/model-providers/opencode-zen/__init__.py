@@ -90,7 +90,7 @@ opencode_zen = OpenCodeZenProfile(
 opencode_go = OpenCodeGoProfile(
     name="opencode-go", aliases=("opencode_go", "go", "opencode-go-sub"), env_vars=("OPENCODE_GO_API_KEY",),
     base_url="https://opencode.ai/zen/go/v1", default_headers=dict(_ATTRIBUTION_HEADERS),
-    default_aux_model="deepseek-v4.1-flash",
+    default_aux_model="glm-5",
     # The Go relay's upstream validates tool content as a strict string: list-type tool
     # content (native vision embeds) 422s with ``messages.N.tool.content.str Input should
     # be a valid string`` (Console Go, #104731) or 400s ``text is not set`` (MiMo, #47026),
