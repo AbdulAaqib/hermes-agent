@@ -41,7 +41,9 @@ FIXTURE = Path(__file__).with_name("fixture_catalog_mcp.py")
 # fix lands; delete the entry then.
 KNOWN: dict[str, tuple[str, str]] = {
     "test_catalog_install_from_tty_launched_dashboard_never_wedges_the_server": (
-        r"^dashboard wedged by an MCP catalog install \(stdin=/dev/pts/\d+\): install -> ReadTimeout after ",
+        # A slow install whose follow-ups both answer is not the wedge; it must stay red.
+        r"^dashboard wedged by an MCP catalog install \(stdin=/dev/pts/\d+\): install -> ReadTimeout after [^;]*; "
+        r"(?!GET /api/config -> HTTP 200; /api/ws -> accepted\n)",
         "#120527 dashboard MCP catalog install reaches the interactive tool checklist on the serve "
         "worker thread when stdin is a TTY and wedges _SKILLS_PROFILE_LOCK"),
 }

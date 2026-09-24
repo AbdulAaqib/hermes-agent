@@ -28,7 +28,7 @@ pytestmark = [
 KNOWN: dict[str, tuple[str, str]] = {
     "q_approval": (r"^approval parked \d+\.\ds on a prompt nobody can answer in -q",
                    "#121296 approval in `chat -q` waits the full approvals.timeout instead of single_query_mode"),
-    "permissions": (r"^PermissionsRequestApprovalResponse without `permissions`: ",
+    "permissions": (r"^PermissionsRequestApprovalResponse without `permissions`: .*'violation': 'missing field `permissions`'",
                     "#121297 reply to item/permissions/requestApproval omits required `permissions`"),
     # The poll itself raises the symptom; anchor on its own subject so no other wait can match.
     "orphan": (r"^timed out after [\d.]+s waiting for app-server descendant \d+ to be reaped after CLI exit",

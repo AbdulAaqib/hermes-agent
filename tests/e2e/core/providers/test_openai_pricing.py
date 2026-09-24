@@ -46,7 +46,7 @@ pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="su
 
 KNOWN: dict[str, tuple[str, str]] = {
     "custom_twin_priced": (
-        r"custom:openrouter row has \d+/\d+ models priced",
+        r"custom:openrouter row has 0/\d+ models priced",
         "#120757 custom:<key> row pointing at a priced aggregator gets no picker prices"),
 }
 
