@@ -194,7 +194,6 @@ javascript:(function(){var s=document.createElement('script');s.src=`http://loca
 
 - **在生产环境使用演示 CDN** — 不要这样做。它有速率限制，使用阿里巴巴的免费代理，且其服务条款禁止生产使用。
 - **API key 泄露** — 传入 `new PageAgent({apiKey: ...})` 的任何 key 都会打包进你的 JS bundle。真实部署时务必通过自己的后端代理。
-- **不兼容 OpenAI 格式的端点**会静默失败或报出难以理解的错误。如果你的 provider 需要原生 Anthropic/Gemini 格式，请在前面加一层 OpenAI 兼容代理（LiteLLM、OpenRouter）。
 - **CSP 拦截** — 启用严格 Content-Security-Policy 的网站可能拒绝加载 CDN script 或禁止内联 eval。此时请从你自己的域名自托管。
 - **编辑路径 3 中的 `.env` 后需重启开发服务器** — Vite 仅在启动时读取环境变量。
 - **Node 版本** — 仓库声明支持 `^22.13.0 || >=24`。Node 20 在 `npm ci` 时会因引擎检查报错失败。

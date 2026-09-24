@@ -339,7 +339,6 @@ DEFAULT_CONTEXT_LENGTHS = {
     "gpt-5.3-codex-spark": 128000, "gpt-5.1-chat": 128000, "gpt-5": 400000,
     "gpt-4.1": 1047576, "gpt-4": 128000,
     # Google / Gemma ("gemma4" is Ollama-style naming, e.g. gemma4:31b-cloud)
-    "gemini": 1048576,
     "gemma-4": 256000, "gemma4": 256000, "gemma-4-31b": 256000, "gemma-3": 131072, "gemma": 8192,
     # DeepSeek — V4 family is 1M; deepseek-chat/-reasoner alias v4-flash modes. ``deepseek-flash``
     # (version-less canonical id, 2026-09 Flash refresh) needs a discrete entry or the
@@ -445,7 +444,7 @@ _URL_TO_PROVIDER: Dict[str, str] = {
     "api.moonshot.ai": "kimi-coding", "api.moonshot.cn": "kimi-coding-cn", "api.kimi.com": "kimi-coding",
     "api.stepfun.ai": "stepfun", "api.stepfun.com": "stepfun", "api.arcee.ai": "arcee", "api.minimax": "minimax",
     "dashscope.aliyuncs.com": "alibaba", "dashscope-intl.aliyuncs.com": "alibaba", "portal.qwen.ai": "qwen-oauth",
-    "openrouter.ai": "openrouter", "generativelanguage.googleapis.com": "gemini",
+    "openrouter.ai": "openrouter",
     "inference-api.nousresearch.com": "nous", "api.deepseek.com": "deepseek",
     "api.githubcopilot.com": "copilot", ".githubcopilot.com": "copilot", "models.github.ai": "copilot",
     "models.inference.ai.azure.com": "copilot",
@@ -1135,7 +1134,7 @@ def parse_context_limit_from_error(error_msg: str) -> Optional[int]:
         r'(\d{4,})\s*(?:token)?\s*(?:context|limit)',
         r'>\s*(\d{4,})\s*(?:max|limit|token)',  # "250000 tokens > 200000 maximum"
         r'(\d{4,})\s*(?:max(?:imum)?)\b',  # "200000 maximum"
-        # Gemini: "input token count is 32825 but model only supports up to
+        # "input token count is 32825 but model only supports up to
         # 32768" — anchor on the phrase so the input count isn't captured.
         r'supports?\s+(?:only\s+)?up\s+to\s+(\d{4,})',
     )

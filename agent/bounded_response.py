@@ -6,7 +6,7 @@ a few hundred chars). A bare ``response.read()`` is unbounded two ways: arbitrar
 hard wall-clock deadline; callers use the returned text instead of ``response.text`` (unbounded /
 raises after a partial stream read). ``httpx.iter_bytes()`` blocks *inside* the socket read, so the
 read runs on a daemon thread; on timeout we close the response (unblocking the read) and return the
-partial bytes. Used by the streaming error-body sites: native Gemini, Gemini Cloud Code, Antigravity.
+partial bytes. Used by the streaming error-body sites: native providers and Antigravity.
 """
 
 from __future__ import annotations

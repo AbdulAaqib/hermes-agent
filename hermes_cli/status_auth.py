@@ -47,7 +47,7 @@ def _oauth_block(name: str, status: dict, hint: str, rows) -> None:
 # Values may be a single env var name (str) or a tuple of alternates (first found wins).
 _API_KEYS: dict[str, str | tuple[str, ...]] = {
     "OpenRouter": "OPENROUTER_API_KEY", "OpenAI": "OPENAI_API_KEY",
-    "Google / Gemini": ("GOOGLE_API_KEY", "GEMINI_API_KEY"), "DeepSeek": "DEEPSEEK_API_KEY",
+    "DeepSeek": "DEEPSEEK_API_KEY",
     "xAI / Grok": "XAI_API_KEY", "NVIDIA NIM": "NVIDIA_API_KEY", "Z.AI / GLM": "GLM_API_KEY",
     "Kimi": "KIMI_API_KEY", "StepFun Step Plan": "STEPFUN_API_KEY", "MiniMax": "MINIMAX_API_KEY",
     "MiniMax-CN": "MINIMAX_CN_API_KEY", "DeepInfra": "DEEPINFRA_API_KEY", "Firecrawl": "FIRECRAWL_API_KEY",

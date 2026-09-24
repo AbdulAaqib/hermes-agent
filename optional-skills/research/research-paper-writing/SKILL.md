@@ -730,7 +730,6 @@ Model Tier        │ Generation │ Self-Eval │ Gap    │ Autoreason Value
 ──────────────────┼────────────┼───────────┼────────┼─────────────────
 Weak (Llama 8B)   │ Poor       │ Poor      │ Small  │ None — can't generate diverse candidates
 Mid (Haiku 3.5)   │ Decent     │ Poor      │ LARGE  │ MAXIMUM — 42/42 perfect Borda
-Mid (Gemini Flash)│ Decent     │ Moderate  │ Large  │ High — wins 2/3
 Strong (Sonnet 4) │ Good       │ Decent    │ Medium │ Moderate — wins 3/5
 Frontier (S4.6)   │ Excellent  │ Good      │ Small  │ Only with constraints
 ```

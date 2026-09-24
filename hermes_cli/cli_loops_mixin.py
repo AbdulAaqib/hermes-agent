@@ -48,7 +48,7 @@ class CLILoopsMixin:
         # /exit --delete also removes the session's transcripts + SQLite history.
         from cli import _DIM, _RST, _cprint, _slash_args
         _args = _slash_args(cmd_original).lower()
-        # Ported from google-gemini/gemini-cli#19332.
+        # Ported from an upstream CLI issue.
         if _args in {"--delete", "-d"}:
             self._delete_session_on_exit = True
         elif _args:

@@ -2066,7 +2066,7 @@ def _github_reasoning_efforts_for_model_id(model_id: str) -> list[str]:
 
 def _should_use_copilot_responses_api(model_id: str) -> bool:
     """opencode's ``shouldUseCopilotResponsesApi``: GPT-5+ uses the Responses API except
-    ``gpt-5-mini``; non-GPT models (Claude, Gemini, ...) use Chat Completions."""
+    ``gpt-5-mini``; non-GPT models (Claude, ...) use Chat Completions."""
     match = re.match(r"^gpt-(\d+)", model_id)
     return bool(match) and int(match.group(1)) >= 5 and not model_id.startswith("gpt-5-mini")
 

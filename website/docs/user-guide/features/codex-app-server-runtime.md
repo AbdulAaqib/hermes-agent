@@ -10,7 +10,6 @@ Hermes can optionally hand `openai/*` and `openai-codex/*` turns to the [Codex C
 This is **opt-in only**. Default Hermes behavior is unchanged unless you flip the flag. Hermes never auto-routes you onto this runtime.
 
 :::tip
-Not using OpenAI Codex? `hermes setup --portal` configures a non-Codex backend with Claude/Gemini/etc. in one step. See [Nous Portal](/integrations/nous-portal).
 :::
 
 ## Why
@@ -271,16 +270,12 @@ To route specific aux tasks to a cheaper / different model, set explicit overrid
 auxiliary:
   title_generation:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   compression:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   vision:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   goal_judge:
     provider: openrouter
-    model: google/gemini-3-flash-preview
 ```
 
 The self-improvement review fork inherits the main runtime via `_current_main_runtime()` and Hermes downgrades it from `codex_app_server` to `codex_responses` automatically (so the fork can actually call `memory` and `skill_manage` — Hermes' own agent-loop tools). That fork still uses your subscription auth unless you've routed aux tasks elsewhere.

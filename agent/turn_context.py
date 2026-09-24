@@ -1019,7 +1019,7 @@ def build_turn_context(
 
 def _sanitize_model_for(agent: Any, moa_config: Any) -> Any:
     """Model name for strict-API tool-call sanitization. In MoA mode ``agent.model`` is
-    the virtual preset name; use the resolved aggregator so Gemini keeps
+    the virtual preset name; use the resolved aggregator so thought_signature keeps
     thought_signature (extra_content)."""
     _sanitize_model = agent.model
     if agent.provider == "moa":

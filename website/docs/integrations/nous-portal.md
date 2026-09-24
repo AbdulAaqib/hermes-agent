@@ -28,7 +28,6 @@ The Portal proxies a curated catalog of agentic models from across the ecosystem
 |--------|--------|
 | **Anthropic Claude** | Opus 4.7, Opus 4.6, Sonnet 4.6, Haiku 4.5 |
 | **OpenAI** | GPT-5.5, GPT-5.5 Pro, GPT-5.4 Mini, GPT-5.4 Nano, GPT-5.3 Codex |
-| **Google Gemini** | Gemini 3 Pro Preview, Gemini 3 Flash Preview, Gemini 3.1 Pro Preview, Gemini 3.1 Flash Lite Preview |
 | **DeepSeek** | DeepSeek V4 Pro |
 | **Qwen** | Qwen3.7-Max, Qwen3.6-35B-A3B |
 | **Kimi / Moonshot** | Kimi K2.6 |
@@ -42,7 +41,6 @@ The Portal proxies a curated catalog of agentic models from across the ecosystem
 | **Hermes** | Hermes-4-70B, Hermes-4-405B (chat, see [note below](#a-note-on-hermes-4)) |
 | **+ everything else** | 280+ additional models — the full agentic frontier |
 
-Under the hood, the Portal routes each model to the backend best suited for it — some models go through OpenRouter, others through proprietary or secondary providers, and the routing for a given model can change over time. Everything is billed against your Nous subscription either way. Switch between Claude Sonnet 4.6 for code and Gemini 3 Pro for long context with `/model` mid-session — no new credentials, no top-ups, no surprise zero-balance errors.
 
 :::note
 Because routing is per-model and not always through OpenRouter, OpenRouter-specific request extensions (such as `provider` routing preferences, `session_id` sticky routing, or top-level `cache_control`) are not part of the Portal's API contract and may be ignored depending on which backend serves the model.
@@ -55,7 +53,6 @@ The same subscription unlocks the [Tool Gateway](/user-guide/features/tool-gatew
 | Tool | Partner | What it does |
 |------|---------|--------------|
 | **Web search & extract** | Firecrawl | Agent-grade search and full-page extraction. No Firecrawl API key, no rate limit babysitting. |
-| **Image generation** | FAL | Nine models under one endpoint: FLUX 2 Klein 9B, FLUX 2 Pro, Z-Image Turbo, Nano Banana Pro (Gemini 3 Pro Image), GPT Image 1.5, GPT Image 2, Ideogram V3, Recraft V4 Pro, Qwen Image. |
 | **Text-to-speech** | OpenAI TTS | High-quality TTS without a separate OpenAI key. Enables [voice mode](/user-guide/features/voice-mode) across messaging platforms. |
 | **Cloud browser automation** | Browser Use | Headless Chromium sessions for `browser_navigate`, `browser_click`, `browser_type`, `browser_vision`. No Browserbase account needed. |
 | **Cloud terminal sandbox** | Modal | Serverless terminal sandboxes for code execution (optional add-on). |
@@ -81,7 +78,6 @@ They are **not recommended for use inside Hermes Agent**, however. Hermes 4 is t
 ```bash
 /model anthropic/claude-sonnet-4.6     # best general-purpose agentic model
 /model openai/gpt-5.5-pro              # strong reasoning + tool calling
-/model google/gemini-3-pro-preview     # huge context window
 /model deepseek/deepseek-v4-pro        # cost-effective coder
 ```
 
@@ -165,7 +161,6 @@ Inside a session:
 ```bash
 /model anthropic/claude-sonnet-4.6
 /model openai/gpt-5.5-pro
-/model google/gemini-3-pro-preview
 ```
 
 Or open the picker:

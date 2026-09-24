@@ -252,16 +252,12 @@ default_permissions = ":read-only"
 auxiliary:
   title_generation:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   compression:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   vision:
     provider: openrouter
-    model: google/gemini-3-flash-preview
   goal_judge:
     provider: openrouter
-    model: google/gemini-3-flash-preview
 ```
 
 自我改进审查分叉通过 `_current_main_runtime()` 继承主运行时，Hermes 会自动将其从 `codex_app_server` 降级为 `codex_responses`（以便分叉能够实际调用 `memory` 和 `skill_manage`——Hermes 自身的 agent 循环工具）。除非你已将辅助任务路由到其他地方，否则该分叉仍使用你的订阅认证。

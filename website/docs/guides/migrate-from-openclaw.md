@@ -194,7 +194,6 @@ Config values take priority. Each subsequent source fills any remaining gaps.
 
 ### Supported key targets
 
-`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `ZAI_API_KEY`, `MINIMAX_API_KEY`, `ELEVENLABS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOICE_TOOLS_OPENAI_KEY`
 
 Keys not in this allowlist are never copied.
 

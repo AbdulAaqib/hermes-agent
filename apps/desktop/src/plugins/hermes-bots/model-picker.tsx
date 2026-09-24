@@ -159,7 +159,7 @@ export function ModelPicker({ bot = null, value, onChange, placeholderModel = 'g
                 model: event.target.value
               })
             }
-            placeholder="antigravity/gemini-3.6-flash-high"
+            placeholder="antigravity/claude-opus-5-high"
             value={value.model}
           />
         )}
@@ -191,7 +191,7 @@ export function ModelPicker({ bot = null, value, onChange, placeholderModel = 'g
                   model: event.target.value
                 })
               }
-              placeholder="e.g. antigravity/gemini-3.6-flash-high"
+              placeholder="e.g. antigravity/claude-opus-5-high"
               value={value.model}
             />
           )}

@@ -331,7 +331,6 @@ instead:
 auxiliary:
   background_review:
     provider: openrouter
-    model: google/gemini-3-flash-preview   # auto (default) = main chat model
 ```
 
 When you point it at a model **different** from your main one, the review runs

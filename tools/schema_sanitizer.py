@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-# Anthropic (and Bedrock/Vertex/Azure fronting it) reject property keys not matching this; one bad
+# Anthropic (and Bedrock/Azure fronting it) reject property keys not matching this; one bad
 # key anywhere in the tools array 400s the request (Cloudflare's MCP ships 61).
 _PROP_KEY_RE = re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
 _PROP_KEY_BAD_CHARS = re.compile(r"[^a-zA-Z0-9_.-]")
@@ -224,7 +224,7 @@ _SCHEMA_CHILD_KEYS = frozenset({
 
 
 def _normalize_type_array(value: list, out: dict) -> None:
-    """Normalize a ``type: [...]`` array into *out* (llama.cpp and Gemini-via-OpenAI reject arrays).
+    """Normalize a ``type: [...]`` array into *out* (llama.cpp and some OpenAI-compat transports reject arrays).
     Per AI-SDK: one non-null type → ``type: X`` (+ ``nullable`` if ``null`` present); several →
     ``anyOf`` of single-type schemas so EVERY branch survives; none → ``null``/object fallback."""
     has_null = "null" in value
@@ -271,8 +271,7 @@ def _sanitize_node(node: Any, path: str) -> Any:
     for key, value in node.items():
         # JSON Schema ``type`` arrays (e.g. ``["number", "string"]``, common in MCP tool schemas) are
         # rejected by several tool-call backends: * llama.cpp's grammar generator only accepts a singular
-        # string type. * Gemini (including OpenAI-compatible transports such as GitHub Copilot proxying to
-        # Gemini) rejects the array form outright — plain @ai-sdk/google rewrites it, but the
+        # string type. * Some OpenAI-compatible transports reject the array form outright — plain @ai-sdk/google rewrites it, but the
         # OpenAI-compatible path forwards it verbatim and the backend 400s. Normalize per the SDK's
         # behavior: * single non-null type → ``type: X`` (+ ``nullable: true`` if the array also contained
         # "null"). No data lost. * multiple non-null types → ``anyOf`` of single-type schemas, so EVERY

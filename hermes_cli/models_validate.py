@@ -66,7 +66,7 @@ def _match_in_catalog(
     """Shared ladder: exact membership → suggestion text. Never rewrites the id: a requested model
     that is merely CLOSE to a catalog entry is the user's selection (a newer release the listing
     lacks, a dated snapshot, a qualifier) and goes to the wire verbatim — fuzzy "auto-correction"
-    swapped `deepseek-v4.1-flash` for `deepseek-v4-flash`, `gemini-3.8-flash` for `gemini-3.6-flash`
+    swapped `deepseek-v4.1-flash` for `deepseek-v4-flash`
     and `model:nitro` for `model` under the user's own label. The vendor's 400 names the valid ids.
     ``case_insensitive`` matches lower-cased ids and maps results back to the catalog's spelling
     (MiniMax ships mixed-case ids). ``suggest_query`` overrides the string the suggestion search
@@ -401,10 +401,6 @@ def _validate_live_listing(req: _Request) -> Optional[dict[str, Any]]:
     api_models = _m.fetch_api_models(req.api_key, req.base_url)
     if api_models is None:
         return None
-    if req.normalized == "gemini":
-        # Gemini's OpenAI-compat listing prefixes ids with "models/"; curated list and user input
-        # use the bare id, so strip before comparing.
-        api_models = [m[len("models/"):] if isinstance(m, str) and m.startswith("models/") else m for m in api_models]
     match = _match_in_catalog(req.lookup, api_models)
     if match.exact:
         return _accept()

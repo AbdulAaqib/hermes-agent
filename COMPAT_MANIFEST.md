@@ -3666,10 +3666,6 @@ to the public equivalent or the new module. Test monkeypatch seams are likewise 
 | `DEFAULT_ELEVENLABS_MODEL_ID` | moved-lazy | `tools.tts_tool_providers` |
 | `DEFAULT_ELEVENLABS_STREAMING_MODEL_ID` | moved-lazy | `tools.tts_tool_providers` |
 | `DEFAULT_ELEVENLABS_VOICE_ID` | moved-lazy | `tools.tts_tool_providers` |
-| `DEFAULT_GEMINI_AUDIO_TAGS` | moved-lazy | `tools.tts_tool_providers` |
-| `DEFAULT_GEMINI_TTS_BASE_URL` | moved-lazy | `tools.tts_tool_providers` |
-| `DEFAULT_GEMINI_TTS_MODEL` | moved-lazy | `tools.tts_tool_providers` |
-| `DEFAULT_GEMINI_TTS_VOICE` | moved-lazy | `tools.tts_tool_providers` |
 | `DEFAULT_KITTENTTS_MODEL` | moved-lazy | `tools.tts_tool_local` |
 | `DEFAULT_KITTENTTS_VOICE` | moved-lazy | `tools.tts_tool_local` |
 | `DEFAULT_MINIMAX_BASE_URL` | moved-lazy | `tools.tts_tool_providers` |
@@ -3697,10 +3693,6 @@ to the public equivalent or the new module. Test monkeypatch seams are likewise 
 | `FALLBACK_MAX_TEXT_LENGTH` | moved-lazy | `tools.tts_tool_delivery` |
 | `FALLBACK_MAX_TEXT_LENGTH` | restored-helper | `(deleted; restored as a dependency of MAX_TEXT_LENGTH)` |
 | `Future` | import | `concurrent.futures` |
-| `GEMINI_AUDIO_TAG_REWRITE_TASK` | moved-lazy | `tools.tts_tool_providers` |
-| `GEMINI_TTS_CHANNELS` | restored-def | `(deleted; BASE body restored)` |
-| `GEMINI_TTS_SAMPLE_RATE` | restored-def | `(deleted; BASE body restored)` |
-| `GEMINI_TTS_SAMPLE_WIDTH` | restored-def | `(deleted; BASE body restored)` |
 | `Iterator` | import | `typing` |
 | `MANAGED_OPENAI_TTS_MODELS` | moved-lazy | `tools.tts_tool_openai` |
 | `MAX_TEXT_LENGTH` | restored-def | `(deleted; BASE body restored)` |

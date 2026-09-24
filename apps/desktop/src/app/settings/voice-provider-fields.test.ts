@@ -22,7 +22,6 @@ describe('voiceProviderKeys', () => {
       'xai',
       'elevenlabs',
       'mistral',
-      'gemini',
       'kittentts',
       'piper',
       'deepinfra',

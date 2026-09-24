@@ -49,7 +49,6 @@ import {
   SiGoogle,
   SiGoogledocs,
   SiGoogledrive,
-  SiGooglegemini,
   SiGooglemaps,
   SiGooglescholar,
   SiGrafana,
@@ -223,7 +222,6 @@ const BRAND_ICONS: Record<string, BrandIcon> = {
   // AI
   'anthropic.com': SiAnthropic,
   'claude.ai': SiClaude,
-  'gemini.google.com': SiGooglegemini,
   'perplexity.ai': SiPerplexity,
   'openrouter.ai': SiOpenrouter,
   'mistral.ai': SiMistralai,

@@ -303,7 +303,7 @@ class VisionMessagePrepMixin:
         #5211
         """
         if (getattr(self, "provider", "") or "").lower() in {
-            "alibaba", "minimax", "minimax-cn", "opencode-go", "opencode-zen", "zai", "bedrock", "xiaomi", "vertex",
+            "alibaba", "minimax", "minimax-cn", "opencode-go", "opencode-zen", "zai", "bedrock", "xiaomi",
         }:
             return True
         base = (getattr(self, "base_url", "") or "").lower()
@@ -315,9 +315,6 @@ class VisionMessagePrepMixin:
             or (base_url_host_matches(base, "opencode.ai") and "/zen/" in base)
             or base_url_host_matches(base, "bigmodel.cn")
             or base_url_host_matches(base, "xiaomimimo.com")
-            # Vertex AI OpenAI-compat endpoint — Gemini model ids keep dots
-            # (e.g. google/gemini-3.5-flash); the hyphenated form is wrong.
-            or base_url_host_matches(base, "aiplatform.googleapis.com")
             # AWS Bedrock runtime endpoints — defense-in-depth when
             # ``provider`` is unset but ``base_url`` still names Bedrock.
             or host.startswith("bedrock-runtime.")

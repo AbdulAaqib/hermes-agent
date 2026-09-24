@@ -28,7 +28,6 @@ Portal 代理了来自整个生态系统的精选 agentic 模型目录——统�
 |--------|--------|
 | **Anthropic Claude** | Opus、Sonnet、Haiku（4.x 系列） |
 | **OpenAI** | GPT-5.4、o 系列推理模型 |
-| **Google Gemini** | 2.5 Pro、2.5 Flash |
 | **DeepSeek** | DeepSeek V3.2、DeepSeek-R1 |
 | **Qwen** | Qwen3 系列、Qwen Coder |
 | **Kimi / Moonshot** | Kimi-K2、Kimi-Latest |
@@ -38,7 +37,6 @@ Portal 代理了来自整个生态系统的精选 agentic 模型目录——统�
 | **Hermes** | Hermes-4-70B、Hermes-4-405B（对话，见[下方说明](#a-note-on-hermes-4)） |
 | **+ 其他所有模型** | 240+ 额外模型——完整的 agentic 前沿生态 |
 
-底层上，Portal 会为每个模型选择最合适的后端——部分模型通过 OpenRouter 路由，其他模型则通过专有或备用提供商，且某个模型的路由方式可能随时间调整。所有用量都统一计入你的 Nous 订阅。在会话中途用 `/model` 即可在 Claude Sonnet 4.6（适合代码）和 Gemini 2.5 Pro（适合长上下文）之间切换——无需新凭证，无需充值，不会遇到余额为零的意外报错。
 
 :::note
 由于路由是按模型进行的，并非总是经过 OpenRouter，OpenRouter 专有的请求扩展（如 `provider` 路由偏好、`session_id` 粘性路由或顶层 `cache_control`）不属于 Portal 的 API 契约，可能会被忽略，具体取决于该模型由哪个后端提供服务。
@@ -51,7 +49,6 @@ Portal 代理了来自整个生态系统的精选 agentic 模型目录——统�
 | 工具 | 合作方 | 功能说明 |
 |------|---------|--------------|
 | **网页搜索与抓取** | Firecrawl | Agent 级搜索与整页内容提取。无需 Firecrawl API 密钥，无需管理速率限制。 |
-| **图像生成** | FAL | 单一端点下的九个模型：FLUX 2 Klein 9B、FLUX 2 Pro、Z-Image Turbo、Nano Banana Pro（Gemini 3 Pro Image）、GPT Image 1.5、GPT Image 2、Ideogram V3、Recraft V4 Pro、Qwen Image。 |
 | **文字转语音** | OpenAI TTS | 无需独立 OpenAI 密钥的高质量 TTS。在各消息平台上启用[语音模式](/user-guide/features/voice-mode)。 |
 | **云端浏览器自动化** | Browser Use | 用于 `browser_navigate`、`browser_click`、`browser_type`、`browser_vision` 的无头 Chromium 会话。无需 Browserbase 账号。 |
 | **云端终端沙箱** | Modal | 用于代码执行的无服务器终端沙箱（可选附加项）。 |
@@ -77,7 +74,6 @@ Nous Research 自家的 **Hermes 4** 系列（Hermes-4-70B、Hermes-4-405B）通
 ```bash
 /model anthropic/claude-sonnet-4.6     # 最佳通用 agentic 模型
 /model openai/gpt-5.4                  # 强推理 + 工具调用
-/model google/gemini-2.5-pro           # 超大上下文窗口
 /model deepseek/deepseek-v3.2          # 高性价比代码模型
 ```
 
@@ -160,7 +156,6 @@ hermes portal open       # 在浏览器中打开订阅管理页面
 ```bash
 /model anthropic/claude-sonnet-4.6
 /model openai/gpt-5.4
-/model google/gemini-2.5-pro
 ```
 
 或打开选择器：

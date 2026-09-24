@@ -321,7 +321,7 @@ CURATOR_REVIEW_PROMPT = (
     "1. Scan the full candidate list. Identify PREFIX CLUSTERS (skills "
     "sharing a first word or domain keyword). Examples you are likely "
     "to find: hermes-config-*, hermes-dashboard-*, gateway-*, codex-*, "
-    "ollama-*, anthropic-*, gemini-*, mcp-*, salvage-*, pr-*, "
+    "ollama-*, anthropic-*, mcp-*, salvage-*, pr-*, "
     "competitor-*, python-*, security-*, etc. Expect 10-25 clusters.\n"
     "2. For each cluster with 2+ members, do NOT ask 'are these pairs "
     "overlapping?' — ask 'what is the UMBRELLA CLASS these skills all "

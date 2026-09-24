@@ -20,7 +20,6 @@ Hermes Agent 可与任何兼容 OpenAI 的 API 配合使用。支持的提供商
 - **Nous Portal** — Nous Research 自有推理端点
 - **OpenAI** — GPT-5.4、GPT-5-codex、GPT-4.1、GPT-4o 等
 - **Anthropic** — Claude 模型（直接 API、通过 `hermes auth add anthropic` 进行 OAuth、OpenRouter 或任何兼容代理）
-- **Google** — Gemini 模型（通过 `gemini` 提供商直接调用 API、OpenRouter 或兼容代理）
 - **z.ai / ZhipuAI** — GLM 模型
 - **Kimi / Moonshot AI** — Kimi 模型
 - **MiniMax** — 全球及中国区端点
@@ -316,7 +315,6 @@ hermes chat --model openrouter/meta-llama/llama-3.1-70b-instruct
 hermes chat
 
 # 使用上下文窗口更大的模型
-hermes chat --model openrouter/google/gemini-3-flash-preview
 ```
 
 如果在第一次长对话时就出现此问题，Hermes 可能检测到了错误的模型上下文长度。检查检测结果：
@@ -642,24 +640,20 @@ Profiles 是构建在 `HERMES_HOME` 之上的托管层。您*可以*在每次命
 
 ### 针对不同任务使用不同模型（多模型工作流）
 
-**场景：** 您日常使用 GPT-5.4，但 Gemini 或 Grok 写社交媒体内容更好。每次手动切换模型很繁琐。
 
 **解决方案：委托配置。** Hermes 可以自动将子智能体路由到不同的模型。在 `~/.hermes/config.yaml` 中设置：
 
 ```yaml
 delegation:
-  model: "google/gemini-3-flash-preview"   # 子智能体使用此模型
   provider: "openrouter"                    # 子智能体的提供商
 ```
 
-现在当您告诉 Hermes "帮我写一个关于 X 的 Twitter 帖子"并生成 `delegate_task` 子智能体时，该子智能体将在 Gemini 上运行，而非您的主模型。您的主对话仍在 GPT-5.4 上进行。
 
 您也可以在 prompt 中明确指定：*"委托一个任务来撰写关于我们产品发布的社交媒体帖子。让你的子智能体负责实际写作。"* 智能体将使用 `delegate_task`，它会自动读取委托配置。
 
 如需一次性切换模型而不使用委托，请在 CLI 中使用 `/model`：
 
 ```bash
-/model google/gemini-3-flash-preview    # 在本次会话中切换
 # ... 撰写内容 ...
 /model openai/gpt-5.4                   # 切换回来
 ```

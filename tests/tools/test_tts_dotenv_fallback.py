@@ -25,9 +25,6 @@ def isolate_env(monkeypatch):
         "XAI_BASE_URL",
         "MINIMAX_API_KEY",
         "MISTRAL_API_KEY",
-        "GEMINI_API_KEY",
-        "GEMINI_BASE_URL",
-        "GOOGLE_API_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -77,53 +74,6 @@ class TestDotenvFallbackPerProvider:
             tts_tool._generate_xai_tts("hi", str(tmp_path / "out.mp3"), {})
 
         assert captured["headers"]["Authorization"] == "Bearer xai-dotenv-key"
-
-
-    def test_gemini_reads_dotenv_key(self, tmp_path):
-        from tools import tts_tool
-
-        captured: dict = {}
-
-        def fake_post(url, **kwargs):
-            captured["params"] = kwargs.get("params", {})
-            response = MagicMock()
-            response.status_code = 200
-            response.json.return_value = {
-                "candidates": [
-                    {
-                        "content": {
-                            "parts": [
-                                {
-                                    "inlineData": {
-                                        "data": "AAAA",
-                                        "mimeType": "audio/L16;codec=pcm;rate=24000",
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-            response.raise_for_status = MagicMock()
-            return response
-
-        # GEMINI_API_KEY hits the first branch; GOOGLE_API_KEY would only be
-        # consulted if the first returned None. Use a side-effect-style mock
-        # to verify the lookup order matches the production code.
-        seen_lookups: list = []
-
-        def fake_get_env_value(key):
-            seen_lookups.append(key)
-            if key == "GEMINI_API_KEY":
-                return "gemini-dotenv-key"
-            return None
-
-        with patch("hermes_cli.config.get_env_value", side_effect=fake_get_env_value), \
-             patch("requests.post", side_effect=fake_post):
-            tts_tool._generate_gemini_tts("hi", str(tmp_path / "out.wav"), {})
-
-        assert "GEMINI_API_KEY" in seen_lookups
-        assert captured["params"]["key"] == "gemini-dotenv-key"
 
 
 class TestRegressionGuard:

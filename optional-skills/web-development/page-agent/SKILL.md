@@ -177,7 +177,6 @@ After Path 3:
 
 - **Demo CDN in production** — don't. It's rate-limited, uses alibaba's free proxy, and their terms forbid production use.
 - **API key exposure** — any key passed to `new PageAgent({apiKey: ...})` ships in your JS bundle. Always proxy through your own backend for real deployments.
-- **Non-OpenAI-compatible endpoints** fail silently or with cryptic errors. If your provider needs native Anthropic/Gemini formatting, use an OpenAI-compatibility proxy (LiteLLM, OpenRouter) in front.
 - **CSP blocks** — sites with strict Content-Security-Policy may refuse to load the CDN script or disallow inline eval. In that case, self-host from your origin.
 - **Restart dev server** after editing `.env` in Path 3 — Vite only reads env at startup.
 - **Node version** — the repo declares `^22.13.0 || >=24`. Node 20 will fail `npm ci` with engine errors.

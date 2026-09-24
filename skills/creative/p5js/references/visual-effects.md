@@ -731,7 +731,6 @@ function cliffordAttractor(a, b, c, d, iterations) {
     x = nx; y = ny;
     let px = map(x, -3, 3, 0, width);
     let py = map(y, -3, 3, 0, height);
-    vertex(px, py);
   }
   endShape();
 }
@@ -746,7 +745,6 @@ function deJongAttractor(a, b, c, d, iterations) {
     x = nx; y = ny;
     let px = map(x, -2.5, 2.5, 0, width);
     let py = map(y, -2.5, 2.5, 0, height);
-    vertex(px, py);
   }
   endShape();
 }

@@ -56,7 +56,6 @@ them. Agents are far better at scripting the canvas than at drawing on it.
   x64/Arm64, Linux `x86_64`/`arm64` AppImage or amd64/arm64 `.deb`).
 - **Agent skills installed in the app**: `Develop → Install Agent Skills`. The
   app writes its own tldraw skill into `~/.codex/skills/`, `~/.claude/skills/`,
-  `~/.cursor/skills/`, and `~/.gemini/skills/` — teaching that agent the `curl`
   recipes below. (This Hermes skill mirrors that guidance for Hermes.)
 - **The local control API.** On launch the app writes `server.json` to its config
   dir (Linux `~/.config/tldraw/`, macOS `~/Library/Application Support/tldraw/`,

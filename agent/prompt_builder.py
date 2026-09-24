@@ -328,11 +328,11 @@ TOOL_USE_ENFORCEMENT_GUIDANCE = (
 
 # "muse" = Meta Muse Spark: on defaults it answers in prose with 0 tool calls and the turn closes on
 # finish_reason=stop (#96550).
-TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "gemini", "gemma", "grok", "glm", "qwen", "deepseek", "muse")
+TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "grok", "glm", "qwen", "deepseek", "muse")
 
 # Models that receive OPENAI_MODEL_EXECUTION_GUIDANCE when agent.execution_guidance is "auto" (agentic-eval
-# traces showed the same failure modes; Muse Spark stops after a chat-only turn on defaults). Gemini/Gemma get
-# GOOGLE_MODEL_OPERATIONAL_GUIDANCE instead; Claude does not exhibit these modes. Any model can opt in via
+# traces showed the same failure modes; Muse Spark stops after a chat-only turn on defaults). Claude does not
+# exhibit these modes. Any model can opt in via
 # config.yaml (`true` or a substring list).
 # Model name substrings whose sessions receive OPENAI_MODEL_EXECUTION_GUIDANCE (execution discipline: tool
 # persistence, mandatory tool use for arithmetic, external-write read-back, count reconciliation, literal
@@ -340,8 +340,7 @@ TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "gemini", "gemma", "grok", "glm",
 # the historical set; deepseek/kimi/qwen/glm/minimax/ mimo/mistral were added after Composio agentic-eval
 # traces showed the same failure modes on those families (financial math in prose, no read-back after
 # external writes, identifier "repair", completeness claims despite count mismatches). GLM's
-# tool-calls-as-plain-text stall (#53847) and MiMo (#41874) are covered here too. Gemini/Gemma are excluded
-# — they get the more specific GOOGLE_MODEL_OPERATIONAL_GUIDANCE block instead.
+# tool-calls-as-plain-text stall (#53847) and MiMo (#41874) are covered here too.
 EXECUTION_GUIDANCE_MODELS = (
     "gpt", "codex", "grok",
     "deepseek", "kimi", "qwen", "glm", "minimax", "mimo", "mistral", "muse",
@@ -372,7 +371,7 @@ TASK_COMPLETION_GUIDANCE = (
 # calls concurrently when they are independent (read-only tools always; path-scoped file ops when their
 # targets don't overlap — see run_agent._execute_tool_calls / tool_dispatch_helpers). The missing piece was
 # telling the *model* to emit those calls together in the first place. Until now the only batching steer in
-# the prompt lived in GOOGLE_MODEL_OPERATIONAL_GUIDANCE — Gemini/Gemma got it, every other model got
+# the prompt was Google-model-only — every other model got
 # nothing. Short on purpose — shipped in the cached system prompt to every user, every session. Token cost
 # is paid once at install and amortised across all sessions via prefix caching. Keep it tight. Ported from
 # cline/cline#11514 ("encourage parallel tool calls"), adapted from Cline's TypeScript tool-surface guidance
@@ -476,26 +475,6 @@ def execution_guidance_text(valid_tool_names=None) -> str:
         text = text.replace("- Current facts (weather, news, versions) → use web_search\n", "")
         text = text.replace("(search_files, web_search, read_file, etc.)", "(search_files, read_file, etc.)")
     return text
-
-
-# Gemini/Gemma-specific operational guidance, adapted from OpenCode's gemini.txt.
-# Injected alongside TOOL_USE_ENFORCEMENT_GUIDANCE when the model is Gemini or Gemma.
-GOOGLE_MODEL_OPERATIONAL_GUIDANCE = (
-    "# Google model operational directives\n"
-    "Follow these operational rules strictly:\n"
-    "- **Absolute paths:** Always construct and use absolute file paths for all "
-    "file system operations. Combine the project root with relative paths.\n"
-    "- **Verify first:** Use read_file/search_files to check file contents and "
-    "project structure before making changes. Never guess at file contents.\n"
-    "- **Dependency checks:** Never assume a library is available. Check "
-    "package.json, requirements.txt, Cargo.toml, etc. before importing.\n"
-    "- **Conciseness:** Keep explanatory text brief — a few sentences, not "
-    "paragraphs. Focus on actions and results over narration.\n"
-    # No parallel-tool-call bullet here: PARALLEL_TOOL_CALL_GUIDANCE already carries it for all models.
-    "- **Non-interactive commands:** Use flags like -y, --yes, --non-interactive to prevent CLI tools from hanging on "
-    "prompts.\n"
-    "- **Keep going:** Work autonomously until the task is fully resolved. Don't stop with a plan — execute it.\n"
-)
 
 
 # computer_use has no prompt block on purpose: its guidance lives in the tool

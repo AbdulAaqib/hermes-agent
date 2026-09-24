@@ -22,7 +22,7 @@ def _is_profile_api_key_provider(provider_id: str) -> bool:
 
 
 _GENERIC_API_KEY_PROVIDERS = frozenset({
-    "openai-api", "gemini", "deepseek", "xai", "zai", "kimi-coding-cn",
+    "openai-api", "deepseek", "xai", "zai", "kimi-coding-cn",
     "minimax", "minimax-cn", "kilocode", "opencode-zen", "opencode-go",
     "opencode-free", "alibaba", "huggingface", "xiaomi", "arcee", "gmi",
     "nvidia", "ollama-cloud", "tencent-tokenhub", "tencent-tokenplan", "lmstudio"})
@@ -58,7 +58,7 @@ _AUX_TASKS: list[tuple[str, str, str]] = [
     ("title_generation", "Title generation", "session titles"),
     ("review", "Review", "/review reviewer subagent"),
     ("memory_query_rewrite", "Memory query rewrite", "memory retrieval queries"),
-    ("tts_audio_tags", "TTS audio tags", "Gemini TTS tag insertion"),
+    ("tts_audio_tags", "TTS audio tags", "TTS audio tag insertion"),
     ("skills_hub", "Skills hub", "skills search/install"),
     ("triage_specifier", "Triage specifier", "kanban spec fleshing"),
     ("kanban_decomposer", "Kanban decomposer", "task decomposition"),

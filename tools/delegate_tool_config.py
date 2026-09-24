@@ -269,7 +269,7 @@ def _merge_request_overrides(runtime_overrides, explicit_overrides):
 
 # Native-SDK providers speak their own wire protocol and can't be reached via chat_completions against a base_url:
 # always take the runtime-provider path (a configured base_url still flows through it, e.g. a Bedrock region).
-_NATIVE_SDK_PROVIDERS = frozenset({"bedrock", "vertex", "google", "google-genai"})
+_NATIVE_SDK_PROVIDERS = frozenset({"bedrock"})
 _EXPLICIT_API_MODES = frozenset({"chat_completions", "codex_responses", "anthropic_messages"})
 
 def _require_pinned_command(command: Optional[str], message: str) -> None:

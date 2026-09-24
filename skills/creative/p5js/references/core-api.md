@@ -355,21 +355,16 @@ colorMode(OKLAB);  // perceptually uniform, no hue angle
 colorMode(HWB);    // Hue-Whiteness-Blackness
 ```
 
-### splineVertex() replaces curveVertex()
 
 No more doubling first/last control points:
 
 ```javascript
 // p5.js 1.x — must repeat first and last
 beginShape();
-curveVertex(pts[0].x, pts[0].y);  // doubled
-for (let p of pts) curveVertex(p.x, p.y);
-curveVertex(pts[pts.length-1].x, pts[pts.length-1].y);  // doubled
 endShape();
 
 // p5.js 2.x — clean
 beginShape();
-for (let p of pts) splineVertex(p.x, p.y);
 endShape();
 ```
 
@@ -379,7 +374,6 @@ Modify built-in shaders without writing full GLSL:
 
 ```javascript
 let myShader = baseMaterialShader().modify({
-  vertexDeclarations: 'uniform float uTime;',
   'vec4 getWorldPosition': `(vec4 pos) {
     pos.y += sin(pos.x * 0.1 + uTime) * 20.0;
     return pos;

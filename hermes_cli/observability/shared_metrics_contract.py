@@ -147,7 +147,7 @@ _LEGACY_PROVIDER_FAMILIES = frozenset({"aggregator", "custom", "direct", "local"
 _LEGACY_MODEL_LOCALITIES = frozenset({"local", "remote", "unknown"})
 _LEGACY_MODEL_OUTCOMES = frozenset({"cancelled", "failed", "success"})
 _LEGACY_MODEL_FAMILIES = frozenset({
-    "claude", "deepseek", "gemini", "gemma", "glm", "gpt", "grok", "kimi", "llama", "minimax",
+    "claude", "deepseek", "gemma", "glm", "gpt", "grok", "kimi", "llama", "minimax",
     "mimo", "mistral", "nemotron", "nova", "o1", "o3", "o4", "qwen", "step", "trinity",
     "unknown",
 })

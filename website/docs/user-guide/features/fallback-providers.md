@@ -39,8 +39,6 @@ fallback_providers:
 
 Each entry requires both `provider` and `model`. Entries missing either field are ignored.
 
-Gemini fallback entries accept `gemini`, `google`, `google-gemini`, and
-`google-ai-studio`. On Google's native API endpoint, all use the native Gemini
 client, including its `generationConfig.thinkingConfig` translation. A custom
 OpenAI-compatible base URL continues to use the compatible client instead.
 
@@ -69,7 +67,6 @@ OpenAI-compatible base URL continues to use the compatible client instead.
 | Upstage Solar | `upstage` (alias `solar`) | `UPSTAGE_API_KEY` (optional: `UPSTAGE_BASE_URL`) |
 | StepFun | `stepfun` | `STEPFUN_API_KEY` (optional: `STEPFUN_BASE_URL`) |
 | Ollama Cloud | `ollama-cloud` | `OLLAMA_API_KEY` |
-| Google AI Studio | `gemini` | `GOOGLE_API_KEY` (alias: `GEMINI_API_KEY`) |
 | xAI (Grok) | `xai` (alias `grok`) | `XAI_API_KEY` (optional: `XAI_BASE_URL`) |
 | xAI Grok OAuth (SuperGrok) | `xai-oauth` (alias `grok-oauth`) | `hermes model` → xAI Grok OAuth (browser login; SuperGrok subscription) |
 | AWS Bedrock | `bedrock` | Standard boto3 auth (`AWS_REGION` + `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`) |
@@ -277,7 +274,6 @@ Context compression is configured under `auxiliary.compression`:
 auxiliary:
   compression:
     provider: main                                    # Same provider options as other auxiliary tasks
-    model: google/gemini-3-flash-preview
     base_url: null                                    # Custom OpenAI-compatible endpoint
 ```
 
@@ -345,7 +341,6 @@ auxiliary:
     model: glm-4v-flash
     fallback_chain:
       - provider: openrouter
-        model: google/gemini-3-flash-preview
       - provider: nous
         model: anthropic/claude-sonnet-4
 
@@ -366,7 +361,6 @@ Each `fallback_chain` entry may also declare its own `timeout` (seconds). Withou
 Hermes recognizes these as capacity-equivalent to 402 credit exhaustion (not transient rate limits):
 
 - Bedrock / LiteLLM: `Too many tokens per day`, `daily limit`, `tokens per day`
-- Vertex AI / GCP: `quota exceeded`, `resource exhausted`, `RESOURCE_EXHAUSTED`
 - Generic: `daily quota`, `quota_exceeded`
 
 If your provider returns a different phrase for daily-quota exhaustion and Hermes doesn't trigger fallback, that's a bug — open an issue with the exact error string.
@@ -381,7 +375,6 @@ Context compression uses the `auxiliary.compression` config block to control whi
 auxiliary:
   compression:
     provider: "auto"                              # auto | openrouter | nous | main
-    model: "google/gemini-3-flash-preview"
 ```
 
 :::info Legacy migration
@@ -399,7 +392,6 @@ Subagents spawned by `delegate_task` inherit the parent agent's primary fallback
 ```yaml
 delegation:
   provider: "openrouter"                      # override provider for all subagents
-  model: "google/gemini-3-flash-preview"      # override model
   # base_url: "http://localhost:1234/v1"      # or use a direct endpoint
   # api_key: "local-key"
 ```
@@ -418,7 +410,6 @@ cronjob(
     schedule="every 2h",
     prompt="Check server status",
     provider="openrouter",
-    model="google/gemini-3-flash-preview"
 )
 ```
 

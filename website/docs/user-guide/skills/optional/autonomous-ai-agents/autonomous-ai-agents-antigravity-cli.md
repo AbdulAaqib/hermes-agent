@@ -90,12 +90,10 @@ fixes, reviews, second opinions) to Antigravity rather than just smoke-testing.
 ### One-shot (preferred for scripted prompts and second opinions)
 
 ```
-terminal(command="agy -p 'Review this diff for bugs and security issues' --model 'Gemini 3.1 Pro (High)'", workdir="/path/to/repo", timeout=300)
 ```
 
 `-p` is non-interactive: it runs the prompt and exits. Pick the engine with
 `--model` (run `agy models` for the exact display strings, e.g.
-`'Gemini 3.1 Pro (High)'`, `'Claude Opus 4.6 (Thinking)'`). Add extra context
 roots with repeatable `--add-dir`.
 
 ### Long / bounded runs (tests, builds, multi-file changes)
@@ -138,20 +136,11 @@ orchestration primitive. Do not put `agy` on a kanban board as its own card or
 treat it as a coordination layer; route work through the normal task graph and
 let the assigned worker choose `agy` (vs. codex/claude-code/direct tools) as its
 method. Reach for it explicitly only when the user asks, when a worker is
-configured to wrap it, or when you want a Gemini-family cross-check against
 another agent's plan or diff.
 
 ## Core paths
 
 - Binary / entrypoint: `agy`
-- App data dir: `~/.gemini/antigravity-cli/`
-- Settings file: `~/.gemini/antigravity-cli/settings.json`
-- Keybindings file: `~/.gemini/antigravity-cli/keybindings.json`
-- Logs: `~/.gemini/antigravity-cli/log/cli-*.log`
-- Conversations: `~/.gemini/antigravity-cli/conversations/`
-- Brain artifacts: `~/.gemini/antigravity-cli/brain/`
-- History: `~/.gemini/antigravity-cli/history.jsonl`
-- Plugin staging: `~/.gemini/antigravity-cli/plugins/<plugin_name>/`
 
 ## Quick Reference
 
@@ -218,7 +207,6 @@ another agent's plan or diff.
 
 ## Plugins
 
-- Plugins stage under `~/.gemini/antigravity-cli/plugins/<plugin_name>/`.
 - They can bundle skills, agents, rules, MCP servers, and hooks.
 - `agy plugin list` returning no imported plugins is a valid empty state.
 
@@ -227,10 +215,8 @@ another agent's plan or diff.
 - `agy help` shows wrapper commands, not interactive slash commands.
 - `agy --version` is the safe non-interactive version check; `agy version` is
   interactive and can fail without a real TTY.
-- First place to look for failures: `~/.gemini/antigravity-cli/log/cli-*.log`
   (read with `read_file`).
 - Don't confuse persistent JSON settings with launch-time overrides.
-- `~/.gemini/antigravity-cli/bin/agentapi` is a thin wrapper to `agy agentapi`.
 - On WSL, token storage is file-based, so auth issues are usually local-file /
   session-state problems, not browser-only problems.
 - Workspace identity can depend on launch directory and the `.antigravitycli`
@@ -249,9 +235,6 @@ files with `read_file`):
 2. `terminal(command="agy --version")`
 3. `terminal(command="agy help")`
 4. `terminal(command="agy plugin list")`
-5. `read_file` on `~/.gemini/antigravity-cli/settings.json`
-6. `read_file` on the latest `~/.gemini/antigravity-cli/log/cli-*.log`
-7. If needed, `read_file` on `~/.gemini/antigravity-cli/keybindings.json`
 
 ## Support files
 

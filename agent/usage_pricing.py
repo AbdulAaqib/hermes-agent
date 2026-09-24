@@ -101,7 +101,7 @@ class PricingEntry:
     source_url: Optional[str] = None
     pricing_version: Optional[str] = None
     fetched_at: Optional[datetime] = None
-    # Context-tiered pricing (e.g. Gemini Pro above 200k prompt tokens): when
+    # Context-tiered pricing (e.g. a Pro tier above 200k prompt tokens): when
     # ``usage.prompt_tokens`` exceeds ``tier_threshold_tokens`` the ``*_above``
     # rates replace the base rates for the WHOLE request (Google's semantics,
     # not marginal brackets). A None ``*_above`` falls back to its base rate.
@@ -149,7 +149,6 @@ def _snap(
 # cache_write]])}); a tuple key shares one rate row across several model ids.
 _BEDROCK_URL = "https://aws.amazon.com/bedrock/pricing/"
 _ANTHROPIC_URL = "https://platform.claude.com/docs/en/about-claude/pricing"
-_GOOGLE_URL = "https://ai.google.dev/pricing"
 _OPUS = ("5.00", "25.00", "0.50", "6.25")
 _SONNET = ("3.00", "15.00", "0.30", "3.75")
 _SNAPSHOTS: tuple[tuple[str, Optional[str], str, dict], ...] = (
@@ -191,17 +190,6 @@ _SNAPSHOTS: tuple[tuple[str, Optional[str], str, dict], ...] = (
     ("deepseek", "https://api-docs.deepseek.com/quick_start/pricing", "deepseek-pricing-2026-09-10", {
         ("deepseek-flash", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"): ("0.15", "0.60", "0.003"),
         "deepseek-v4-pro": ("0.66", "1.98", "0.022"),
-    }),
-    ("google", "https://ai.google.dev/gemini-api/docs/pricing", "google-pricing-2026-09-02", {
-        ("gemini-3.8-flash", "gemini-3.7-flash"): ("0.75", "3.75", "0.075"),
-    }),
-    ("google", "https://ai.google.dev/gemini-api/docs/pricing", "google-pricing-2026-07-28", {
-        "gemini-3.6-flash": ("1.50", "7.50", "0.15"), "gemini-3.5-flash-lite": ("0.30", "2.50", "0.03"),
-    }),
-    ("google", _GOOGLE_URL, "google-pricing-2026-07-07", {
-        "gemini-3.5-flash": ("1.50", "9.00", "0.15"), "gemini-3.1-flash-lite": ("0.25", "1.50", "0.025"),
-        "gemini-3-pro-preview": ("2.00", "12.00", "0.20"), "gemini-3-flash-preview": ("0.50", "3.00", "0.05"),
-        "gemini-2.5-flash": ("0.15", "0.60", "0.015"), "gemini-2.0-flash": ("0.10", "0.40", "0.01"),
     }),
     # AWS Bedrock on-demand: same per-token rates as the model provider, billed
     # through AWS. Current-gen Claude rows are commercial-list snapshots (the AWS
@@ -256,29 +244,13 @@ _OFFICIAL_DOCS_PRICING[("openai", "gpt-6-astra")] = _snap(
     cache_write_cost_per_million_above=Decimal("25.00"),
 )
 
-# Context-tiered Gemini Pro: above 200k prompt tokens the *_above rates apply to
-# the whole request (see PricingEntry).
-_OFFICIAL_DOCS_PRICING[("google", "gemini-3.1-pro")] = _snap(
-    "2.00", "12.00", "0.20", url=_GOOGLE_URL, version="google-pricing-2026-07-07",
-    tier_threshold_tokens=200_000, input_cost_per_million_above=Decimal("4.00"),
-    output_cost_per_million_above=Decimal("18.00"), cache_read_cost_per_million_above=Decimal("0.40"),
-)
-_OFFICIAL_DOCS_PRICING[("google", "gemini-2.5-pro")] = _snap(
-    "1.25", "10.00", "0.125", url=_GOOGLE_URL, version="google-pricing-2026-07-07",
-    tier_threshold_tokens=200_000, input_cost_per_million_above=Decimal("2.50"),
-    output_cost_per_million_above=Decimal("15.00"),
-)
-del _BEDROCK_URL, _ANTHROPIC_URL, _GOOGLE_URL, _OPUS, _SONNET
+del _BEDROCK_URL, _ANTHROPIC_URL, _OPUS, _SONNET
 
 # GPT-5.6 "-pro" high-effort variants bill at the base tier's per-token rates
 # (more tokens per task, not a higher rate); the Hermes-side "-900k" Codex
 # picker variants are the same model with the suffix stripped on the wire.
-# The direct Gemini provider emits preview IDs for two models; key the snapshot
-# by both the documented stable name and the emitted ID.
 for _provider, _alias, _canonical in (
     *((("openai", f"{m}-{suffix}", m) for m in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna") for suffix in ("pro", "900k"))),
-    ("google", "gemini-3.1-pro-preview", "gemini-3.1-pro"),
-    ("google", "gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite"),
 ):
     _OFFICIAL_DOCS_PRICING[(_provider, _alias)] = _OFFICIAL_DOCS_PRICING[(_provider, _canonical)]
 del _provider, _alias, _canonical
@@ -316,11 +288,6 @@ def _first_nonzero(obj: Any, *paths: tuple[str, ...]) -> int:
 _SNAPSHOT_PROVIDER_ALIASES = {
     "anthropic": "anthropic", "openai": "openai", "openai-api": "openai", "minimax": "minimax", "minimax-cn": "minimax-cn",
 }
-# AI Studio and Vertex host the same Gemini models (the Vertex "google/" vendor
-# prefix is stripped with the rest of the path).
-_GOOGLE_PROVIDER_NAMES = {"google", "gemini", "vertex", "google-gemini", "google-ai-studio", "google-vertex", "vertex-ai"}
-
-
 def resolve_billing_route(
     model_name: str, provider: Optional[str] = None, base_url: Optional[str] = None
 ) -> BillingRoute:
@@ -349,12 +316,7 @@ def resolve_billing_route(
         return BillingRoute(provider="nous", model=model, base_url=base_url or _NOUS_DEFAULT_BASE_URL, billing_mode="official_models_api")
     snapshot_provider = _SNAPSHOT_PROVIDER_ALIASES.get(provider_name)
     if snapshot_provider is None:
-        if (
-            provider_name in _GOOGLE_PROVIDER_NAMES
-            or host("aiplatform.googleapis.com") or host("generativelanguage.googleapis.com")
-        ):
-            snapshot_provider = "google"
-        elif provider_name == "fireworks" or host("api.fireworks.ai"):
+        if provider_name == "fireworks" or host("api.fireworks.ai"):
             snapshot_provider = "fireworks"
     if snapshot_provider:
         return BillingRoute(provider=snapshot_provider, model=bare, base_url=url, billing_mode="official_docs_snapshot")
@@ -564,7 +526,7 @@ def estimate_usage_cost(
     if not entry:
         return _unknown_cost("none")
 
-    # Whole-request context tier (e.g. Gemini Pro >200k prompts): above the
+    # Whole-request context tier (e.g. a Pro tier >200k prompts): above the
     # threshold the *_above rates apply to the entire request; None falls back.
     above = entry.tier_threshold_tokens is not None and usage.prompt_tokens > entry.tier_threshold_tokens
     amount = _ZERO

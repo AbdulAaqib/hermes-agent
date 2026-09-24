@@ -100,7 +100,6 @@ You should see Hermes call `web_search` (Firecrawl-backed, through the gateway) 
 ```bash
 /model anthropic/claude-sonnet-4.6     # best general-purpose agentic
 /model openai/gpt-5.4                  # strong reasoning + tool calling
-/model google/gemini-2.5-pro           # huge context window
 /model deepseek/deepseek-v3.2          # cost-effective coder
 /model anthropic/claude-opus-4.6       # heavyweight for hard problems
 ```

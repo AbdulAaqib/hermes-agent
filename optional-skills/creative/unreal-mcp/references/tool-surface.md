@@ -247,7 +247,6 @@ Console commands (editor console, backtick):
 | `ModelContextProtocol.StartServer [port]` | Start server (optional port override) |
 | `ModelContextProtocol.StopServer` | Stop server, close all sessions |
 | `ModelContextProtocol.RefreshTools` | Re-poll toolset providers — run after authoring/hot-reload/Game-Feature activation |
-| `ModelContextProtocol.GenerateClientConfig <Client\|All>` | Write client config files (ClaudeCode/Cursor/VSCode/Gemini/Codex) — NOT used for Hermes |
 
 Command-line flags for launching the editor pre-configured:
 `-ModelContextProtocolStartServer` (force start regardless of preference),

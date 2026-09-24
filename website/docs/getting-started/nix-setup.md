@@ -249,7 +249,6 @@ services.hermes-agent.settings = {
 Both are deep-merged at evaluation time. Nix-declared keys always win over keys in an existing `config.yaml` on disk, but **user-added keys that Nix doesn't touch are preserved**. This means if the agent or a manual edit adds keys like `skills.disabled` or `streaming.enabled`, they survive `nixos-rebuild switch`.
 
 :::note Model naming
-`settings.model.default` uses the model identifier your provider expects. With [OpenRouter](https://openrouter.ai) (the default), these look like `"anthropic/claude-sonnet-4"` or `"google/gemini-3-flash"`. If you're using a provider directly (Anthropic, OpenAI), set `settings.model.base_url` to point at their API and use their native model IDs (e.g., `"claude-sonnet-4-20250514"`). When no `base_url` is set, Hermes defaults to OpenRouter.
 :::
 
 :::tip Discovering available config keys
@@ -277,7 +276,6 @@ Run `nix build .#configKeys && cat result` to see every leaf config key extracte
       compression = {
         enabled = true;
         threshold = 0.85;
-        summary_model = "google/gemini-3-flash-preview";
       };
       memory = { memory_enabled = true; user_profile_enabled = true; };
       display = { compact = false; personality = "kawaii"; };
@@ -557,7 +555,6 @@ Some MCP servers can request LLM completions from the agent:
     args = [ "-y" "analysis-server" ];
     sampling = {
       enabled = true;
-      model = "google/gemini-3-flash";
       max_tokens_cap = 4096;
       timeout = 30;
       max_rpm = 10;

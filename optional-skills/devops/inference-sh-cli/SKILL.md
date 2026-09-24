@@ -19,7 +19,6 @@ All commands use the **terminal tool** to run `infsh` commands.
 
 ## When to Use
 
-- User asks to generate images (FLUX, Reve, Seedream, Grok, Gemini image)
 - User asks to generate video (Veo, Wan, Seedance, OmniHuman)
 - User asks about inference.sh or infsh
 - User wants to run AI apps without managing individual provider APIs
@@ -78,8 +77,6 @@ infsh app list --search image
 # FLUX Dev with LoRA
 infsh app run falai/flux-dev-lora --input '{"prompt": "sunset over mountains", "num_images": 1}' --json
 
-# Gemini image generation
-infsh app run google/gemini-2-5-flash-image --input '{"prompt": "futuristic city", "num_images": 1}' --json
 
 # Seedream (ByteDance)
 infsh app run bytedance/seedream-5-lite --input '{"prompt": "nature scene"}' --json

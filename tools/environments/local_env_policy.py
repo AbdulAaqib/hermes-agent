@@ -20,7 +20,7 @@ _STATIC_PROVIDER_ENV_BLOCKLIST = frozenset({
     "ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "LLM_MODEL", "GOOGLE_API_KEY",
     # Path to a GCP service-account JSON, not a bare key, so OPTIONAL_ENV_VARS
     # marks it password=False and the registry loop skips it.
-    "VERTEX_CREDENTIALS_PATH", "GOOGLE_APPLICATION_CREDENTIALS", "DEEPSEEK_API_KEY",
+    "DEEPSEEK_API_KEY",
     "MISTRAL_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY", "PERPLEXITY_API_KEY",
     "COHERE_API_KEY", "FIREWORKS_API_KEY", "XAI_API_KEY", "HELICONE_API_KEY",
     "PARALLEL_API_KEY", "FIRECRAWL_API_KEY", "FIRECRAWL_API_URL",
@@ -194,7 +194,7 @@ def _plugin_terminal_env_strip_keys() -> frozenset:
 
 
 # Tier-1 secrets: stripped from EVERY spawned subprocess even under inherit_credentials
-# (claude/codex/gemini). Not provider credentials — no child needs them and they are the
+# (claude/codex). Not provider credentials — no child needs them and they are the
 # highest-value secrets to keep from a compromised dependency. Provider keys = Tier 2.
 _ALWAYS_STRIP_KEYS: frozenset[str] = frozenset({
     # GitHub auth

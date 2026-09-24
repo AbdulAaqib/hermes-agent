@@ -589,7 +589,7 @@ def build_anthropic_kwargs(
         for key in ("temperature", "top_p", "top_k"):
             kwargs.pop(key, None)
     # Fast mode: native Anthropic only — third-party providers reject the unknown beta/param and
-    # Anthropic scopes it to the Claude API (not Bedrock/Vertex/Foundry). Per-request extra_headers
+    # Anthropic scopes it to the Claude API (not Bedrock/Foundry). Per-request extra_headers
     # OVERRIDE the client-level anthropic-beta header, so rebuild the full beta list.
     if fast_mode and not _is_third_party_anthropic_endpoint(base_url) and _supports_fast_mode(model):
         kwargs.setdefault("extra_body", {})["speed"] = "fast"

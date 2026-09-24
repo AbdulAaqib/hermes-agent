@@ -198,7 +198,7 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
 def close_interrupted_tool_sequence(messages: list, final_response: Any = None) -> bool:
     """Append a synthetic assistant turn when an interrupted tail is a tool result: a transcript
     ending on a raw ``tool`` message makes the next user message land as ``tool → user``, an
-    alternation violation strict providers (Gemini, Claude) answer by hallucinating a
+    alternation violation strict providers (Claude et al.) answer by hallucinating a
     continuation. Mutates in place; True if a closing turn was appended."""
     last = messages[-1] if messages else None
     if not isinstance(last, dict) or last.get("role") != "tool":
@@ -211,13 +211,13 @@ def close_interrupted_tool_sequence(messages: list, final_response: Any = None) 
 
 
 # finish_reason wire normalization. Some OpenAI-compatible gateways fronting
-# Gemini backends emit the native uppercase reasons (STOP, MAX_TOKENS); every
+# Some backends emit the native uppercase reasons (STOP, MAX_TOKENS); every
 # downstream comparison uses the lowercase OpenAI literals, so an uppercase
 # reason silently skips stop handling and length recovery. Single owner —
 # call at wire intake (transport normalize_response, stream chunk capture),
 # never re-fold at comparison sites.
 _FINISH_REASON_ALIASES = {
-    "max_tokens": "length",  # Gemini-native / Anthropic-style cap reason
+    "max_tokens": "length",  # native / Anthropic-style cap reason
     "end": "stop",  # some gateways' clean-completion spelling
     "function_call": "tool_calls",  # OpenAI legacy pre-tools spelling
 }

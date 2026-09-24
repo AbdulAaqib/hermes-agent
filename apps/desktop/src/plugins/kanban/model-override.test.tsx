@@ -28,7 +28,7 @@ vi.mock('@/hermes', () => ({
 
 beforeEach(() => {
   getGlobalModelOptions.mockResolvedValue({
-    providers: [{ models: ['gemini-3.1-pro', 'gemini-2.5-flash'], name: 'Google', slug: 'google' }]
+    providers: [{ models: ['claude-opus-5', 'claude-haiku-4-5'], name: 'Anthropic', slug: 'anthropic' }]
   })
 })
 
@@ -44,8 +44,8 @@ describe('override label', () => {
   })
 
   it('shows provider: model · Effort', () => {
-    expect(overrideLabel({ effort: 'high', model: 'gemini-3.1-pro', provider: 'google' }, 'x')).toBe(
-      'google: gemini-3.1-pro · High'
+    expect(overrideLabel({ effort: 'high', model: 'claude-opus-5', provider: 'google' }, 'x')).toBe(
+      'google: claude-opus-5 · High'
     )
   })
 
@@ -95,24 +95,24 @@ describe('the shared catalog menu, driven by an override controller', () => {
     const onChange = renderMenu()
 
     // Rows render the display name; the controller receives the raw id.
-    fireEvent.click(await screen.findByText(/Gemini 3\.1 Pro/i))
+    fireEvent.click(await screen.findByText(/Claude Opus 5/i))
 
     const picked = onChange.mock.calls.at(-1)![0]
 
-    expect(picked.model).toBe('gemini-3.1-pro')
+    expect(picked.model).toBe('claude-opus-5')
     expect(picked.provider).toBe('google')
   })
 
   it('never renders MoA presets — a preset is not a worker model', async () => {
     getGlobalModelOptions.mockResolvedValue({
       providers: [
-        { models: ['gemini-3.1-pro'], name: 'Google', slug: 'google' },
+        { models: ['claude-opus-5'], name: 'Anthropic', slug: 'anthropic' },
         { models: ['BeastMode'], name: 'Mixture of Agents', slug: 'moa' }
       ]
     })
 
     renderMenu()
-    await screen.findByText(/Gemini 3\.1 Pro/i)
+    await screen.findByText(/Claude Opus 5/i)
 
     expect(screen.queryByText(/BeastMode/)).toBeNull()
   })

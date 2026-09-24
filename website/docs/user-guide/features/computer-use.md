@@ -12,7 +12,6 @@ desktops / Spaces don't switch on you. You and the agent co-work on the
 same machine.
 
 Unlike most computer-use integrations, this works with **any tool-capable
-model** — Claude, GPT, Gemini, or an open model on a local
 OpenAI-compatible endpoint. There's no Anthropic-native schema to worry
 about.
 
@@ -326,7 +325,6 @@ like "open the Recycle Bin on my desktop" still work.
 | Anthropic (Claude Sonnet/Opus 3+) | ✅ | ✅ | Best overall; SOM + raw coordinates. |
 | OpenRouter (any vision model) | ✅ | ✅ | Multi-part tool messages supported. |
 | OpenAI (GPT-4+, GPT-5) | ✅ | ✅ | Same as above. |
-| Google (Gemini 2+) | ✅ | ✅ | Tool-calling + vision both supported. |
 | Local vLLM / LM Studio / Ollama (vision model) | ✅ | ✅ | If the model supports multi-part tool content. |
 | Text-only models | ❌ | ✅ (degraded) | Use `mode="ax"` for accessibility-tree-only operation. |
 

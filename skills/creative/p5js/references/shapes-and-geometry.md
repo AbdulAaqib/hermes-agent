@@ -39,16 +39,9 @@ strokeJoin(ROUND);    // ROUND, MITER, BEVEL
 
 ## Custom Shapes with Vertices
 
-### Basic vertex shape
 
 ```javascript
 beginShape();
-  vertex(100, 100);
-  vertex(200, 50);
-  vertex(300, 100);
-  vertex(250, 200);
-  vertex(150, 200);
-endShape(CLOSE);  // CLOSE connects last vertex to first
 ```
 
 ### Shape modes
@@ -69,16 +62,8 @@ beginShape(QUAD_STRIP);
 ```javascript
 beginShape();
   // outer shape
-  vertex(100, 100);
-  vertex(300, 100);
-  vertex(300, 300);
-  vertex(100, 300);
   // inner hole
   beginContour();
-    vertex(150, 150);
-    vertex(150, 250);
-    vertex(250, 250);
-    vertex(250, 150);
   endContour();
 endShape(CLOSE);
 ```
@@ -99,8 +84,6 @@ bezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2);
 
 ```javascript
 beginShape();
-  vertex(100, 200);
-  bezierVertex(150, 50, 250, 50, 300, 200);
   // control1, control2, endpoint
 endShape();
 ```
@@ -109,8 +92,6 @@ endShape();
 
 ```javascript
 beginShape();
-  vertex(100, 200);
-  quadraticVertex(200, 50, 300, 200);
   // single control point + endpoint
 endShape();
 ```
@@ -132,7 +113,6 @@ curve(cpx1, cpy1, x1, y1, x2, y2, cpx2, cpy2);
 // x2,y2 = end point (visible)
 // cpx2,cpy2 = control point after end
 
-curveVertex(x, y);  // in beginShape() — smooth curve through all points
 curveTightness(0);  // 0 = Catmull-Rom, 1 = straight lines, -1 = loose
 ```
 
@@ -141,11 +121,8 @@ curveTightness(0);  // 0 = Catmull-Rom, 1 = straight lines, -1 = loose
 ```javascript
 let points = [/* array of {x, y} */];
 beginShape();
-  curveVertex(points[0].x, points[0].y); // repeat first for tangent
   for (let p of points) {
-    curveVertex(p.x, p.y);
   }
-  curveVertex(points[points.length-1].x, points[points.length-1].y); // repeat last
 endShape();
 ```
 
@@ -232,7 +209,6 @@ function regularPolygon(cx, cy, r, sides) {
   beginShape();
   for (let i = 0; i < sides; i++) {
     let a = TWO_PI * i / sides - HALF_PI;
-    vertex(cx + cos(a) * r, cy + sin(a) * r);
   }
   endShape(CLOSE);
 }
@@ -246,8 +222,6 @@ function star(cx, cy, r1, r2, npoints) {
   let angle = TWO_PI / npoints;
   let halfAngle = angle / 2;
   for (let a = -HALF_PI; a < TWO_PI - HALF_PI; a += angle) {
-    vertex(cx + cos(a) * r2, cy + sin(a) * r2);
-    vertex(cx + cos(a + halfAngle) * r1, cy + sin(a + halfAngle) * r1);
   }
   endShape(CLOSE);
 }
@@ -272,7 +246,6 @@ function blob(cx, cy, baseR, noiseScale, noiseOffset, detail = 64) {
     let a = TWO_PI * i / detail;
     let r = baseR + noise(cos(a) * noiseScale + noiseOffset,
                           sin(a) * noiseScale + noiseOffset) * baseR * 0.4;
-    vertex(cx + cos(a) * r, cy + sin(a) * r);
   }
   endShape(CLOSE);
 }

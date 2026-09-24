@@ -389,7 +389,6 @@ Profiles 使用 `~/.hermes/profiles/<name>/`，布局相同。
 | Nous Portal | OAuth | `hermes auth` |
 | OpenAI Codex | OAuth | `hermes auth` |
 | GitHub Copilot | Token | `COPILOT_GITHUB_TOKEN` |
-| Google Gemini | API key | `GOOGLE_API_KEY` 或 `GEMINI_API_KEY` |
 | DeepSeek | API key | `DEEPSEEK_API_KEY` |
 | xAI / Grok | API key | `XAI_API_KEY` |
 | Hugging Face | Token | `HF_TOKEN` |

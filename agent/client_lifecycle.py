@@ -768,23 +768,6 @@ class ClientLifecycleMixin:
         logger.info("Applied updated .env credentials for %s: endpoint %s", self.provider, self.base_url)
         return True
 
-    def _try_refresh_vertex_client_credentials(self) -> bool:
-        """Re-mint the Vertex OAuth2 token (~1h TTL; long sessions 401 on the expired bearer) and rebuild the client."""
-        if self.api_mode != "chat_completions" or self.provider != "vertex":
-            return False
-        try:
-            from agent.vertex_adapter import get_vertex_config
-            token, base_url = get_vertex_config()
-        except Exception as exc:
-            logger.debug("Vertex credential refresh failed: %s", exc)
-            return False
-        ok = _valid_credential_pair(token, base_url) and self._adopt_openai_credentials(
-            token, base_url, reason="vertex_credential_refresh",
-        )
-        if ok:
-            logger.info("Vertex AI OAuth token refreshed")
-        return ok
-
     def _apply_copilot_token(self, token: str, enterprise_base_url: Any, *, reason: str) -> bool:
         self.api_key = token
         if enterprise_base_url:

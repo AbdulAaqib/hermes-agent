@@ -5305,7 +5305,6 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 Learn to fine-tune and run Qwen3-VL locally with Unsloth.
 
-Qwen3-VL is Qwen’s new vision models with **instruct** and **thinking** versions. The 2B, 4B, 8B and 32B models are dense, while 30B and 235B are MoE. The 235B thinking LLM delivers SOTA vision and coding performance rivaling GPT-5 (high) and Gemini 2.5 Pro.\
 \
 Qwen3-VL has vision, video and OCR capabilities as well as 256K context (can be extended to 1M).\
 \
@@ -8828,7 +8827,6 @@ Benchmark experiments were mainly conducted by [David Sluys](https://www.linkedi
 | Model                             | Accuracy |
 | --------------------------------- | -------- |
 | GPT-5                             | 86.7     |
-| Gemini 2.5 Pro (June)             | 83.1     |
 | o3                                | 76.9     |
 | DeepSeek V3.1                     | 76.1     |
 | **(3 bit) DeepSeek V3.1 Unsloth** | **75.6** |
@@ -11072,7 +11070,6 @@ Unsloth supports these models and more! In fact, simply type a model from the Hu
 
 There are 3 other settings which you can toggle:
 
-This determines the context length of the model. Gemini for example has over 1 million context length, whilst Llama-3 has 8192 context length. We allow you to select ANY number - but we recommend setting it 2048 for testing purposes. Unsloth also supports very long context finetuning, and we show we can provide 4x longer context lengths than the best.
 2.
 
 Keep this as None, but you can select torch.float16 or torch.bfloat16 for newer GPUs.

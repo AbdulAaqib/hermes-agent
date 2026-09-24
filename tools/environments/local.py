@@ -304,7 +304,7 @@ def hermes_subprocess_env(*, inherit_credentials: bool = False) -> dict[str, str
     computer-use driver, TUI Node host). Tier 1 (``_ALWAYS_STRIP_KEYS``, plugin keys,
     force-prefixed hints, dynamic internal secrets) is always removed; Tier 2 (the
     provider/tool blocklist) unless ``inherit_credentials`` — pass that **only** for
-    children that legitimately need LLM credentials (user-blessed claude/codex/gemini
+    children that legitimately need LLM credentials (user-blessed claude/codex
     CLI, TUI Node host). Terminal/execute_code use ``_sanitize_subprocess_env``."""
     env = os.environ.copy()
     strip = _ALWAYS_STRIP_KEYS | _plugin_terminal_env_strip_keys()

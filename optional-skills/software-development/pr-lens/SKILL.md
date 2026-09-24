@@ -85,7 +85,6 @@ Run all commands with the terminal tool from the repository root.
 
    Attach the views a reviewer needs and leave the rest in `.pr-lens/`: the top architecture view first, then a data flow if the change has a sequence worth following. Two diagrams usually beat four.
 
-6. **Optional automation:** `npx @coldtea/pr-lens-cli@latest analyze --base <ref>` does steps 1–2 by asking a provider (Gemini, OpenAI, or any `/chat/completions` endpoint) with a key of your own. That is the only path here that needs one; normally you author the document yourself.
 
 ## What makes a document worth reading
 

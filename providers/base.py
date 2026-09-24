@@ -62,7 +62,7 @@ class ProviderProfile:
     # True when the provider's API accepts image content inside
     # tool-result messages natively.  Set on providers that expose
     # multimodal models via tool results (Anthropic Messages API,
-    # OpenAI Chat Completions, Gemini, MiniMax, etc.).
+    # OpenAI Chat Completions, MiniMax, etc.).
     # Falls back to model-catalog lookup when False and the provider
     # has no registered profile.
     supports_vision: bool = False

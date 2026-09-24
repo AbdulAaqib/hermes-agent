@@ -34,9 +34,9 @@ const DEEPSEEK_PROVIDER = {
 }
 
 const GOOGLE_PROVIDER = {
-  models: ['gemini-3.1-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-  name: 'Google',
-  slug: 'google'
+  models: ['claude-opus-5', 'claude-haiku-4-5', 'claude-sonnet-5'],
+  name: 'Anthropic',
+  slug: 'anthropic'
 }
 
 const MOCK_PROVIDERS = [DEEPSEEK_PROVIDER, GOOGLE_PROVIDER, MOA_PROVIDER]
@@ -135,7 +135,7 @@ describe('ModelMenuPanel MoA presets', () => {
 describe('ModelMenuPanel current selection', () => {
   it('keeps the checkmark on the live SessionView model when a stale options response disagrees', async () => {
     $currentProvider.set('google')
-    $currentModel.set('gemini-3.1-pro')
+    $currentModel.set('claude-opus-5')
     getGlobalModelOptions.mockResolvedValue({
       model: 'deepseek-chat',
       provider: 'deepseek',
@@ -144,7 +144,7 @@ describe('ModelMenuPanel current selection', () => {
 
     const { content } = renderPanel()
 
-    const currentRow = (await content.findByText(/Gemini 3\.1 Pro/i)).closest('[role="menuitem"]')
+    const currentRow = (await content.findByText(/Claude Opus 5/i)).closest('[role="menuitem"]')
     const staleRow = content.getByText('Deepseek Chat').closest('[role="menuitem"]')
 
     expect(currentRow?.querySelector('.codicon-check')).not.toBeNull()
@@ -170,10 +170,10 @@ describe('ModelMenuPanel search', () => {
     await content.findByText(/Deepseek V4 Pro/i)
 
     const input = screen.getByRole('textbox', { name: 'Search models' })
-    fireEvent.change(input, { target: { value: 'gemini' } })
+    fireEvent.change(input, { target: { value: 'claude' } })
 
     await vi.waitFor(() => {
-      expect(rowWithText(content, /Gemini 3\.1 Pro/i)).not.toBeNull()
+      expect(rowWithText(content, /Claude Opus 5/i)).not.toBeNull()
     })
     expect(rowWithText(content, /Deepseek V4 Pro/i)).toBeNull()
   })
@@ -184,10 +184,10 @@ describe('ModelMenuPanel search', () => {
     await content.findByText('DeepSeek')
 
     const input = screen.getByRole('textbox', { name: 'Search models' })
-    fireEvent.change(input, { target: { value: 'gemini' } })
+    fireEvent.change(input, { target: { value: 'claude' } })
 
     await vi.waitFor(() => {
-      expect(rowWithText(content, /Gemini 3\.1 Pro/i)).not.toBeNull()
+      expect(rowWithText(content, /Claude Opus 5/i)).not.toBeNull()
     })
 
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -195,7 +195,7 @@ describe('ModelMenuPanel search', () => {
     // First matching family of the first (alphabetical) matching provider.
     await vi.waitFor(() => {
       expect(onSelectModel).toHaveBeenCalledWith({
-        model: 'gemini-3.1-pro',
+        model: 'claude-opus-5',
         provider: 'google',
         sessionId: 'runtime-1'
       })
@@ -220,10 +220,10 @@ describe('ModelMenuPanel search', () => {
     await content.findByText('DeepSeek')
 
     const input = screen.getByRole('textbox', { name: 'Search models' })
-    fireEvent.change(input, { target: { value: 'gemini' } })
+    fireEvent.change(input, { target: { value: 'claude' } })
 
     await vi.waitFor(() => {
-      expect(rowWithText(content, /Gemini 3\.1 Pro/i)).not.toBeNull()
+      expect(rowWithText(content, /Claude Opus 5/i)).not.toBeNull()
     })
 
     // First match auto-selected; ↓ steps to the second match.
@@ -232,7 +232,7 @@ describe('ModelMenuPanel search', () => {
 
     await vi.waitFor(() => {
       expect(onSelectModel).toHaveBeenCalledWith({
-        model: 'gemini-2.5-flash',
+        model: 'claude-haiku-4-5',
         provider: 'google',
         sessionId: 'runtime-1'
       })
@@ -241,7 +241,7 @@ describe('ModelMenuPanel search', () => {
 
   it('with no query the selection sits on the current model, so Enter closes without switching', async () => {
     $currentProvider.set('google')
-    $currentModel.set('gemini-3.1-pro')
+    $currentModel.set('claude-opus-5')
     const { content, onSelectModel } = renderPanel()
 
     await content.findByText('DeepSeek')

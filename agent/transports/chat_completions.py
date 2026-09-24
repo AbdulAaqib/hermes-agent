@@ -38,7 +38,6 @@ _STRIP_MSG_KEYS = (
     "platform_message_id", "api_content", "anthropic_content_blocks", "bedrock_content_blocks",
 )
 _STRIP_TC_KEYS = ("call_id", "response_item_id")
-_HIGH_EFFORTS = {"high", "xhigh", "max", "ultra"}
 
 
 def _rename_tool_search_bridge_for_xai(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, str]]:
@@ -126,80 +125,6 @@ def _reasoning_config_for_model(model: str, reasoning_config: dict | None) -> di
     return {**reasoning_config, "effort": clamped} if clamped != effort else reasoning_config
 
 
-def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> dict | None:
-    """Translate Hermes/OpenRouter-style reasoning config to Gemini thinkingConfig."""
-    if not isinstance(reasoning_config, dict):
-        return None
-    normalized_model = (model or "").strip().lower().removeprefix("google/")
-    # Gemini-only; Gemma/PaLM on the same provider 400 on the field even as ``{"includeThoughts": False}``.
-    # ``thinking_config`` is a Gemini-only request parameter. The same ``gemini`` provider also serves Gemma
-    # (and historically PaLM/Bard); those reject the field with HTTP 400 "Unknown name 'thinking_config':
-    # Cannot find field" — including the polite ``{"includeThoughts": False}`` form. Omit the field entirely
-    # on non-Gemini models. (#17426)
-    if not normalized_model.startswith("gemini"):
-        return None
-    effort = str(reasoning_config.get("effort", "medium") or "medium").strip().lower()
-    if reasoning_config.get("enabled") is False or effort == "none":
-        # ``includeThoughts: False`` only omits thought parts from the returned
-        # response; the model may still reason internally and bill thought
-        # tokens against maxOutputTokens, starving small budgets (title
-        # generation's 64 tokens). Set thinkingBudget to 0 to actually disable
-        # thinking on families that document it: Gemini 2.5 and 3+ (plus the
-        # ``gemini-flash-latest`` alias); future majors are added only when the
-        # API documents thinkingBudget for them. (#91927)
-        config: dict[str, Any] = {"includeThoughts": False}
-        if normalized_model == "gemini-flash-latest" or normalized_model.startswith(("gemini-2.5-", "gemini-3")):
-            config["thinkingBudget"] = 0
-        return config
-    thinking_config: dict[str, Any] = {"includeThoughts": True}
-    # Gemini 2.5 takes thinkingBudget; don't guess one from coarse effort levels.
-    if normalized_model.startswith("gemini-2.5-"):
-        return thinking_config
-    if effort not in {"minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
-        effort = "medium"
-    # Gemini 3 Flash documents low/medium/high thinking levels; Gemini 3 Pro
-    # is stricter (low/high). Clamp Hermes' wider effort set to what each
-    # family accepts so we never forward an undocumented level verbatim.
-    if normalized_model.startswith("gemini-3"):
-        if "flash" in normalized_model:
-            thinking_config["thinkingLevel"] = (
-                "low" if effort in {"minimal", "low"} else "high" if effort in _HIGH_EFFORTS else "medium"
-            )
-        elif "pro" in normalized_model:
-            thinking_config["thinkingLevel"] = "high" if effort in _HIGH_EFFORTS else "low"
-    return thinking_config
-
-
-def _snake_case_gemini_thinking_config(config: dict | None) -> dict | None:
-    """Convert Gemini thinking config keys to the OpenAI-compat field names."""
-    if not isinstance(config, dict) or not config:
-        return None
-    translated: dict[str, Any] = {}
-    include, level, budget = config.get("includeThoughts"), config.get("thinkingLevel"), config.get("thinkingBudget")
-    if isinstance(include, bool):
-        translated["include_thoughts"] = include
-    if isinstance(level, str) and level.strip():
-        translated["thinking_level"] = level.strip().lower()
-    if isinstance(budget, (int, float)):
-        translated["thinking_budget"] = int(budget)
-    return translated or None
-
-
-def _raise_gemini_thinking_max_tokens(model: str, reasoning_config: dict | None, requested: Any) -> Any:
-    """Raise Gemini output caps that thinking tokens (billed against max_tokens) would otherwise exhaust."""
-    thinking_config = _build_gemini_thinking_config(model, reasoning_config)
-    if not thinking_config:
-        return requested
-    from agent.gemini_native_adapter import _effective_gemini_max_output_tokens
-
-    return _effective_gemini_max_output_tokens(requested, thinking_config)
-
-
-def _is_gemini_openai_compat_base_url(base_url: Any) -> bool:
-    normalized = str(base_url or "").strip().rstrip("/").lower()
-    return bool(normalized) and "generativelanguage.googleapis.com" in normalized and normalized.endswith("/openai")
-
-
 def _is_openai_api_base_url(base_url: Any) -> bool:
     """True only for the exact api.openai.com host (implies ``prompt_cache_key`` support).
 
@@ -209,15 +134,6 @@ def _is_openai_api_base_url(base_url: Any) -> bool:
         return (urlparse(str(base_url or "").strip()).hostname or "").lower() == "api.openai.com"
     except Exception:
         return False
-
-
-def _model_consumes_thought_signature(model: Any) -> bool:
-    """True for Gemini-family targets, which require tool-call ``extra_content`` (thought_signature) replay.
-
-    Every other strict provider rejects it, so it is stripped for non-Gemini targets.
-    """
-    m = str(model or "").lower()
-    return "gemini" in m or "gemma" in m
 
 
 def _attr_or_model_extra(obj: Any, name: str) -> Any:
@@ -265,10 +181,10 @@ def _apply_max_tokens(api_kwargs: dict, model: str, reasoning_config: Any, param
     max_tokens_fn = params.get("max_tokens_param_fn")
     for candidate in (params.get("ephemeral_max_output_tokens"), params.get("max_tokens")):
         if candidate is not None and max_tokens_fn:
-            api_kwargs.update(max_tokens_fn(_raise_gemini_thinking_max_tokens(model, reasoning_config, candidate)))
+            api_kwargs.update(max_tokens_fn(candidate))
             return
     if profile_max and max_tokens_fn:
-        api_kwargs.update(max_tokens_fn(_raise_gemini_thinking_max_tokens(model, reasoning_config, profile_max)))
+        api_kwargs.update(max_tokens_fn(profile_max))
 
 
 
@@ -308,7 +224,7 @@ def _sanitize_message(msg: Any, strip_extra_content: bool) -> dict | None:
     """Sanitized copy of ``msg``, or None when nothing needs stripping.
 
     Drops persistence sidecars, ``_``-prefixed scaffolding markers, tool-call ``call_id`` /
-    ``response_item_id`` (and ``extra_content`` unless Gemini), an assistant
+    ``response_item_id`` and ``extra_content``, an assistant
     ``tool_calls: []`` / ``null`` (strict providers reject both), and ``name``
     on tool results (schema-valid only on user/assistant messages; strict
     providers reject it with ``contains item with unknown key name``).
@@ -359,7 +275,7 @@ class ChatCompletionsTransport(ProviderTransport):
 
         Returns the input list unchanged when nothing needs sanitizing.
         """
-        strip_extra_content = not _model_consumes_thought_signature(kwargs.get("model"))
+        strip_extra_content = True
         sanitized_pairs = [(m, _sanitize_message(m, strip_extra_content)) for m in messages]
         if all(s is None for _, s in sanitized_pairs):
             return messages
@@ -433,17 +349,6 @@ class ChatCompletionsTransport(ProviderTransport):
                 off = thinking_off or _effort == "none"
                 extra_body["reasoning"] = {"enabled": not off, "effort": "none" if off else _effort}
 
-        if str(params.get("provider_name") or "").strip().lower() == "gemini":
-            raw_thinking_config = _build_gemini_thinking_config(model, reasoning_config)
-            if _is_gemini_openai_compat_base_url(base_url):
-                thinking_config = _snake_case_gemini_thinking_config(raw_thinking_config)
-                if thinking_config:
-                    openai_compat_extra = extra_body.get("extra_body", {})
-                    openai_compat_extra["google"] = {**openai_compat_extra.get("google", {}), "thinking_config": thinking_config}
-                    extra_body["extra_body"] = openai_compat_extra
-            elif raw_thinking_config:
-                extra_body["thinking_config"] = raw_thinking_config
-
         if params.get("extra_body_additions"):
             extra_body.update(params["extra_body_additions"])
         if extra_body:
@@ -488,18 +393,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 api_kwargs[k] = v
 
         if extra_body:
-            # Native Gemini speaks Google's REST schema: OpenAI-style extra_body
-            # keys (tags, reasoning, provider, ...) are unknown fields -> HTTP 400.
-            # The native client only reads thinking_config, so drop everything else.
-            try:
-                from agent.gemini_native_adapter import is_native_gemini_base_url
-                _native_gemini = is_native_gemini_base_url(params.get("base_url"))
-            except Exception:
-                _native_gemini = False
-            if _native_gemini:
-                extra_body = {k: v for k, v in extra_body.items() if k in ("thinking_config", "thinkingConfig")}
-            if extra_body:
-                api_kwargs["extra_body"] = extra_body
+            api_kwargs["extra_body"] = extra_body
         return _finish_kwargs(
             api_kwargs, sanitized, params, supports_prompt_cache_key=bool(getattr(profile, "supports_prompt_cache_key", False)),
         )
@@ -507,13 +401,13 @@ class ChatCompletionsTransport(ProviderTransport):
     def normalize_response(self, response: Any, **kwargs) -> NormalizedResponse:
         """Normalize an OpenAI ChatCompletion.
 
-        Gemini ``extra_content`` rides on ToolCall.provider_data; ``reasoning_content`` and
+        Provider ``extra_content`` rides on ToolCall.provider_data; ``reasoning_content`` and
         ``reasoning_details`` stay distinct in provider_data because downstream reads them so.
         """
         choice = response.choices[0]
         msg = getattr(choice, "message", None)
         _fr = getattr(choice, "finish_reason", None)
-        # Poolside returns int finish_reason; Gemini-fronting gateways return
+        # Poolside returns int finish_reason; some gateways return
         # uppercase STOP / MAX_TOKENS — fold to the OpenAI contract here.
         finish_reason = _normalize_finish_reason(str(_fr) if isinstance(_fr, int) else _fr) or "stop"
 

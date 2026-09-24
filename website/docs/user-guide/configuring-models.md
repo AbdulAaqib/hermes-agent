@@ -91,7 +91,6 @@ Every auxiliary task defaults to `auto` — meaning Hermes tries your main model
 | Task | When to override |
 |---|---|
 | **Title Gen** | When title latency or cost matters more than matching the main model. Pin a known-good flash model, or set `auxiliary.title_generation.prefer_fast_model: true` to let Hermes choose the provider's fast tier. |
-| **Vision** | When your main model lacks vision support. Point it at `google/gemini-2.5-flash` or `gpt-4o-mini`. |
 | **Compression** | When you're burning reasoning tokens on Opus/M2.7 just to summarize context. A fast chat model does the job at 1/50th the cost. |
 | **Approval** | For `approval_mode: smart` — a fast/cheap model (haiku, flash, gpt-5-mini) decides whether to auto-approve low-risk commands. Expensive models here are waste. |
 | **Web Extract** | When you use `web_extract` heavily. Same logic as compression — summarization doesn't need reasoning. |
@@ -137,12 +136,10 @@ model:
   api_mode: chat_completions
 ```
 
-**Auxiliary override (example — vision on gemini-flash):**
 ```yaml
 auxiliary:
   vision:
     provider: openrouter
-    model: google/gemini-2.5-flash
     base_url: ''
     api_key: ''
     timeout: 120
@@ -397,12 +394,10 @@ curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TO
 
 # Override a single auxiliary task
 curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TOKEN" \
-  -d '{"scope":"auxiliary","task":"vision","provider":"openrouter","model":"google/gemini-2.5-flash"}' \
   http://localhost:PORT/api/model/set
 
 # Assign one model to every auxiliary task
 curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TOKEN" \
-  -d '{"scope":"auxiliary","task":"","provider":"openrouter","model":"google/gemini-2.5-flash"}' \
   http://localhost:PORT/api/model/set
 
 # Reset all auxiliary tasks to auto

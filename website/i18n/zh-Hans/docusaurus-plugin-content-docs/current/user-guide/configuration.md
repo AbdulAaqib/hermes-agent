@@ -607,7 +607,6 @@ compression:
 # 摘要模型/provider 在 auxiliary: 下配置：
 auxiliary:
   compression:
-    model: ""                                       # 空 = 使用主聊天模型。覆盖为例如 "google/gemini-3-flash-preview" 以获得更便宜/更快的压缩。
     provider: "auto"                                # Provider："auto"、"openrouter"、"nous"、"codex"、"main" 等
     base_url: null                                  # 自定义 OpenAI 兼容端点（覆盖 provider）
 ```
@@ -634,14 +633,12 @@ compression:
   enabled: true
   threshold: 0.50
 ```
-使用您的主 provider 和主模型。如果您希望在比主聊天模型更便宜的模型上进行压缩，请覆盖每任务（例如 `auxiliary.compression.provider: openrouter` + `model: google/gemini-2.5-flash`）。
 
 **强制特定 provider**（基于 OAuth 或 API 密钥）：
 ```yaml
 auxiliary:
   compression:
     provider: nous
-    model: gemini-3-flash
 ```
 适用于任何 provider：`nous`、`openrouter`、`codex`、`anthropic`、`main` 等。
 
@@ -789,7 +786,6 @@ Qwen Cloud（阿里巴巴 DashScope）上游将缓存 TTL 限制为 5 分钟，�
 
 ## 辅助模型
 
-Hermes 使用"辅助"模型处理图像分析、浏览器截图分析、会话标题生成和上下文压缩等附带任务。默认情况下（`auxiliary.*.provider: "auto"`），Hermes 将每个辅助任务路由到您的**主聊天模型** —— 与您在 `hermes model` 中选择的相同 provider/模型。您无需配置任何内容即可开始，但请注意，在昂贵的推理模型（Opus、MiniMax M2.7 等）上，辅助任务会增加显著成本。如果您希望无论主模型如何都使用便宜且快速的附带任务，请显式设置 `auxiliary.<task>.provider` 和 `auxiliary.<task>.model`（例如，在 OpenRouter 上使用 Gemini Flash 进行视觉分析）。（网页提取不是辅助任务：`web_extract` 和浏览器快照会确定性截断长内容，并将完整文本存储供 `read_file` 分页读取 —— 不涉及 LLM。）
 
 :::note 为什么 "auto" 使用您的主模型
 早期版本将聚合器用户（OpenRouter、Nous Portal）分流到便宜的 provider 端默认值。这令人惊讶 —— 付费购买聚合器订阅的用户会看到不同的模型处理其辅助流量。`auto` 现在对所有人使用主模型，`config.yaml` 中的每任务覆盖仍然优先（见下方[完整辅助配置参考](#full-auxiliary-config-reference)）。
@@ -804,7 +800,6 @@ $ hermes model
 → Configure auxiliary models
 
 [ ] vision               currently: auto / main model
-[ ] title_generation     currently: openrouter / google/gemini-3-flash-preview
 [ ] compression          currently: auto / main model
 [ ] approval             currently: auto / main model
 [ ] triage_specifier     currently: auto / main model
@@ -838,7 +833,6 @@ Hermes 中的每个模型槽位 —— 辅助任务、压缩、回退 —— 使
 
 当设置 `base_url` 时，Hermes 忽略 provider 并直接调用该端点（使用 `api_key` 或 `OPENAI_API_KEY` 进行认证）。当仅设置 `provider` 时，Hermes 使用该 provider 的内置认证和基础 URL。
 
-辅助任务的可用 providers：`auto`、`main`，以及[provider 注册表](/reference/environment-variables)中的任何 provider —— `openrouter`、`nous`、`openai-codex`、`copilot`、`copilot-acp`、`anthropic`、`gemini`、`qwen-oauth`、`zai`、`kimi-coding`、`kimi-coding-cn`、`minimax`、`minimax-cn`、`minimax-oauth`、`deepseek`、`nvidia`、`xai`、`xai-oauth`、`ollama-cloud`、`alibaba`、`bedrock`、`huggingface`、`arcee`、`xiaomi`、`kilocode`、`opencode-zen`、`opencode-go`、`ai-gateway`、`azure-foundry` —— 或您 `custom_providers` 列表中任何命名的自定义 provider（例如 `provider: "beans"`）。
 
 :::tip MiniMax OAuth
 `minimax-oauth` 通过浏览器 OAuth 登录（无需 API 密钥）。运行 `hermes model` 并选择 **MiniMax (OAuth)** 进行认证。辅助任务自动使用 `MiniMax-M2.7-highspeed`。参阅 [MiniMax OAuth 指南](../guides/minimax-oauth.md)。
@@ -861,7 +855,6 @@ auxiliary:
   # 图像分析（vision_analyze 工具 + 浏览器截图）
   vision:
     provider: "auto"           # "auto"、"openrouter"、"nous"、"codex"、"main" 等
-    model: ""                  # 例如 "openai/gpt-4o"、"google/gemini-2.5-flash"
     base_url: ""               # 自定义 OpenAI 兼容端点（覆盖 provider）
     api_key: ""                # base_url 的 API 密钥（回退到 OPENAI_API_KEY）
     timeout: 120               # 秒 —— LLM API 调用超时；视觉负载需要宽裕的超时
@@ -882,7 +875,6 @@ auxiliary:
     #   - provider: nous
     #     model: deepseek/deepseek-chat
     #   - provider: openrouter
-    #     model: google/gemini-2.5-flash
     #     base_url: ""
     #     api_key: ""
 
@@ -936,7 +928,6 @@ auxiliary:
       - provider: nous
         model: deepseek/deepseek-chat
       - provider: openrouter
-        model: google/gemini-2.5-flash
 ```
 
 当主要辅助 provider（`openrouter` / `openai/gpt-4o-mini`）返回速率限制、连接超时或需要付费错误时，Hermes 将依次遍历 `fallback_chain`。它会跳过 provider 与已失败 provider 相同的条目，并尝试每个剩余条目，直到有一个成功或该链耗尽。如果所有回退都失败，Hermes 会回退到主 agent 模型作为最终的安全网。
@@ -945,7 +936,6 @@ auxiliary:
 
 | 键 | 描述 |
 |-----|-------------|
-| `provider` | Provider 名称（`nous`、`openrouter`、`anthropic`、`gemini`、`main` 等） |
 | `model` | 该 provider 的模型名称 |
 | `base_url` | （可选）自定义 OpenAI 兼容端点 |
 
@@ -975,7 +965,6 @@ auxiliary:
 
 ### 更改视觉模型
 
-使用 GPT-4o 而非 Gemini Flash 进行图像分析：
 
 ```yaml
 auxiliary:
@@ -996,7 +985,6 @@ AUXILIARY_VISION_MODEL=openai/gpt-4o
 | Provider | 描述 | 要求 |
 |----------|-------------|-------------|
 | `"auto"` | 最佳可用（默认）。Vision 尝试 OpenRouter → Nous → Codex。 | — |
-| `"openrouter"` | 强制 OpenRouter —— 路由到任何模型（Gemini、GPT-4o、Claude 等） | `OPENROUTER_API_KEY` |
 | `"nous"` | 强制 Nous Portal | `hermes auth` |
 | `"codex"` | 强制 Codex OAuth（ChatGPT 账户）。支持视觉（gpt-5.3-codex）。 | `hermes model` → ChatGPT or Codex Subscription |
 | `"minimax-oauth"` | 强制 MiniMax OAuth（浏览器登录，无需 API 密钥）。辅助任务使用 MiniMax-M2.7-highspeed。 | `hermes model` → MiniMax (OAuth) |
@@ -1044,7 +1032,6 @@ auxiliary:
 auxiliary:
   vision:
     provider: "openrouter"
-    model: "openai/gpt-4o"      # 或 "google/gemini-2.5-flash" 等
 ```
 
 **使用 Codex OAuth**（ChatGPT Pro/Plus 账户 —— 无需 API 密钥）：
@@ -1131,7 +1118,6 @@ agent:
 
 | 值 | 行为 |
 |-------|----------|
-| `"auto"`（默认） | 对匹配以下模型启用：`gpt`、`codex`、`gemini`、`gemma`、`grok`。对所有其他模型禁用（Claude、DeepSeek、Qwen 等）。 |
 | `true` | 始终启用，无论模型如何。如果您注意到当前模型描述操作而不是执行操作，请使用此选项。 |
 | `false` | 始终禁用，无论模型如何。 |
 | `["gpt", "codex", "qwen", "llama"]` | 仅当模型名称包含列出的子字符串之一时启用（不区分大小写）。 |
@@ -1144,7 +1130,6 @@ agent:
 
 2. **OpenAI 执行纪律**（仅限 GPT 和 Codex 模型）—— 针对 GPT 特定失败模式的额外指导：在部分结果上放弃工作、跳过先决条件查找、幻觉而不是使用工具、在未验证的情况下宣布"完成"。
 
-3. **Google 操作指导**（仅限 Gemini 和 Gemma 模型）—— 简洁性、绝对路径、并行工具调用和编辑前验证模式。
 
 这些对用户透明，仅影响系统提示词。已经可靠使用工具的模型（如 Claude）不需要此指导，这就是为什么 `"auto"` 排除它们。
 
@@ -1154,14 +1139,12 @@ agent:
 
 ```yaml
 agent:
-  tool_use_enforcement: ["gpt", "codex", "gemini", "grok", "my-custom-model"]
 ```
 
 ## TTS 配置
 
 ```yaml
 tts:
-  provider: "edge"              # "edge" | "elevenlabs" | "openai" | "minimax" | "mistral" | "gemini" | "xai" | "neutts"
   speed: 1.0                    # 全局速度倍数（所有 provider 的回退）
   edge:
     voice: "en-US-AriaNeural"   # 322 种声音，74 种语言
@@ -1180,8 +1163,6 @@ tts:
   mistral:
     model: "voxtral-mini-tts-2603"
     voice_id: "c69964a6-ab8b-4f8a-9465-ec0925096ec8"  # Paul - Neutral（默认）
-  gemini:
-    model: "gemini-2.5-flash-preview-tts"   # 或 gemini-2.5-pro-preview-tts
     voice: "Kore"               # 30 种预置声音：Zephyr、Puck、Kore、Enceladus 等
   xai:
     voice_id: "eve"             # xAI TTS 声音
@@ -1675,7 +1656,6 @@ checkpoints:
 
 ```yaml
 delegation:
-  # model: "google/gemini-3-flash-preview"  # 覆盖模型（空 = 继承父级）
   # provider: "openrouter"                  # 覆盖 provider（空 = 继承父级）
   # base_url: "http://localhost:1234/v1"    # 直接 OpenAI 兼容端点（优先于 provider）
   # api_key: "local-key"                    # base_url 的 API 密钥（回退到 OPENAI_API_KEY）

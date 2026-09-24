@@ -36,7 +36,6 @@ keyboard focus, or switch virtual desktops / Spaces. The user can keep
 typing in their editor while you click around in a browser in another
 window. This is the opposite of pyautogui-style automation.
 
-Everything here works with any tool-capable model — Claude, GPT, Gemini,
 or an open model on a local OpenAI-compatible endpoint. There is no
 Anthropic-native schema to learn.
 

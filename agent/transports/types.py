@@ -19,7 +19,7 @@ class ToolCall:
     ``id`` is the protocol's canonical identifier (``tool_call_id`` / ``tool_use_id``);
     may be ``None`` when the provider omits it — the agent fills it via
     ``_deterministic_call_id()`` before storing history.
-    ``provider_data``: Codex ``{"call_id", "response_item_id"}``, Gemini
+    ``provider_data``: Codex ``{"call_id", "response_item_id"}``, Google-family
     ``{"extra_content": {"google": {"thought_signature": ...}}}``, else ``None``.
     """
 
@@ -38,7 +38,7 @@ class ToolCall:
 
     call_id = property(lambda self: self._pd("call_id"))
     response_item_id = property(lambda self: self._pd("response_item_id"))
-    # Gemini thought_signature; must be replayed on later calls or the API returns HTTP 400.
+    # Provider thought_signature; must be replayed on later calls or the API returns HTTP 400.
     extra_content = property(lambda self: self._pd("extra_content"))
 
 

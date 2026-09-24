@@ -1055,7 +1055,7 @@ class CLITuiMixin:
             buf.start_completion()
 
     def _tui_handle_double_escape(self, event):
-        """Double ESC discards the draft and attached images (Claude Code / Gemini CLI gesture).
+        """Double ESC discards the draft and attached images (Claude Code gesture).
 
         Works while the agent streams — the gap Ctrl+C leaves (it interrupts the turn and only
         clears the draft when idle). The draft is appended to history first so Up recalls it,

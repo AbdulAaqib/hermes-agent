@@ -72,7 +72,6 @@ for (let p of particles) {
 // GOOD: single shape with vertices
 beginShape(POINTS);
 for (let p of particles) {
-  vertex(p.x, p.y);
 }
 endShape();
 

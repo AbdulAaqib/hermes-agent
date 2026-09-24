@@ -341,7 +341,7 @@ class SessionUsageMixin:
         """Accumulate a per-API-call usage delta into session_model_usage, inside the caller's
         write txn after the ``sessions`` UPDATE. A missing model/provider falls back to
         the session row — except for aux rows (``task`` set), which must NOT inherit the
-        main-loop route (vision on gemini while the main loop runs anthropic): missing
+        main-loop route (vision on one provider while the main loop runs another): missing
         info stays 'unknown'/empty.
 
         ``task`` distinguishes what kind of work consumed the tokens: ``''`` (empty) is the main agent loop;

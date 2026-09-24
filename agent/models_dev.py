@@ -121,7 +121,7 @@ PROVIDER_TO_MODELS_DEV: Dict[str, str] = {
     # its *-contributor-free SKUs; without this alias every opencode-free lookup missed models.dev.
     "opencode-free": "opencode",
     "kilocode": "kilo", "fireworks": "fireworks-ai",
-    "huggingface": "huggingface", "gemini": "google", "google": "google",
+    "huggingface": "huggingface",
     "xai": "xai",
     "xai-oauth": "xai",  # OAuth is a transport path for the same xAI catalog
     "xiaomi": "xiaomi", "nvidia": "nvidia",
@@ -771,21 +771,8 @@ def list_provider_models(provider: str, *, allow_network: bool = True) -> List[s
 # Non-agentic or noise models (TTS, embedding, dated preview snapshots, live/streaming-only, image-only).
 _NOISE_PATTERNS: re.Pattern = re.compile(
     r"-tts\b|embedding|live-|-(preview|exp)-\d{2,4}[-_]|" r"-image\b|-image-preview\b|-customtools\b", re.IGNORECASE)
-# Hidden from the Gemini catalogs surfaced in setup/model selection (capability metadata stays available for direct use).
-_GOOGLE_HIDDEN_MODELS = frozenset({
-    # Low-TPM Gemma models that trip Google input-token quota walls under agent-style traffic.
-    "gemma-4-31b-it", "gemma-4-26b-it", "gemma-4-26b-a4b-it",
-    "gemma-3-1b", "gemma-3-1b-it", "gemma-3-2b", "gemma-3-2b-it",
-    "gemma-3-4b", "gemma-3-4b-it", "gemma-3-12b", "gemma-3-12b-it",
-    "gemma-3-27b", "gemma-3-27b-it",
-    # Stale/retired Google slugs that 404 on the current endpoints.
-    "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b",
-    "gemini-2.0-flash", "gemini-2.0-flash-lite",
-})
-
-
 def _should_hide_from_provider_catalog(provider: str, model_id: str) -> bool:
-    return (provider or "").strip().lower() in {"gemini", "google"} and (model_id or "").strip().lower() in _GOOGLE_HIDDEN_MODELS
+    return False
 
 
 def list_agentic_models(provider: str, *, allow_network: bool = True) -> List[str]:

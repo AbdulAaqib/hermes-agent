@@ -33,7 +33,6 @@ description: "在后台驱动 macOS 桌面——截图、鼠标、键盘、滚�
 你的操作**不会**移动用户的光标、抢占键盘焦点或切换 Space。
 用户可以在编辑器中继续输入，而你在另一个 Space 的 Safari 中点击操作。这与 pyautogui 风格的自动化截然相反。
 
-此处所有功能适用于任何支持工具调用的模型——Claude、GPT、Gemini，或通过本地 OpenAI 兼容端点运行的开源模型。无需学习任何 Anthropic 原生 schema。
 
 ## 标准工作流
 

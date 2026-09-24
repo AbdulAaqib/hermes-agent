@@ -3337,7 +3337,6 @@ export const en: Translations = {
         description: 'Hosts hundreds of models behind a single key. Good default for new installs.'
       },
       openai: { short: 'GPT-class models', description: 'Direct access to OpenAI models.' },
-      gemini: { short: 'Gemini models', description: 'Direct access to Google Gemini models.' },
       xai: { short: 'Grok models', description: 'Direct access to xAI Grok models.' },
       local: {
         short: 'self-hosted',

@@ -236,15 +236,15 @@ describe('featured defaults', () => {
   it('defaults to the featured shortlist when a provider publishes one', () => {
     const nous = featuredProvider(
       'nous',
-      ['anthropic/opus', 'anthropic/haiku', 'google/gemini', 'x-ai/grok'],
-      ['anthropic/opus', 'google/gemini', 'x-ai/grok']
+      ['anthropic/opus', 'anthropic/haiku', 'anthropic/claude-opus-5', 'x-ai/grok'],
+      ['anthropic/opus', 'anthropic/claude-opus-5', 'x-ai/grok']
     )
 
     const visible = defaultVisibleKeys([nous])
 
     // Featured are visible; the non-featured model is hidden by default.
     expect(visible.has(modelVisibilityKey('nous', 'anthropic/opus'))).toBe(true)
-    expect(visible.has(modelVisibilityKey('nous', 'google/gemini'))).toBe(true)
+    expect(visible.has(modelVisibilityKey('nous', 'anthropic/claude-opus-5'))).toBe(true)
     expect(visible.has(modelVisibilityKey('nous', 'x-ai/grok'))).toBe(true)
     expect(visible.has(modelVisibilityKey('nous', 'anthropic/haiku'))).toBe(false)
   })

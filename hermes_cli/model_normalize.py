@@ -13,7 +13,6 @@ _VENDOR_PREFIXES: dict[str, str] = {
     "o1": "openai",
     "o3": "openai",
     "o4": "openai",
-    "gemini": "google",
     "gemma": "google",
     "deepseek": "deepseek",
     "glm": "z-ai",
@@ -66,7 +65,6 @@ _MATCHING_PREFIX_STRIP_PROVIDERS: frozenset[str] = frozenset({
     "ollama-cloud",
     "nebius-token-factory",
     "custom",
-    "gemini",
     "xai"})
 
 # Providers whose API serves ``vendor/model`` ids but whose endpoint can also

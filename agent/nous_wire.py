@@ -1,14 +1,14 @@
 """Nous Portal ``anthropic/*`` wire selection when ``nous.anthropic_wire`` is ``auto``.
 
 Portal serves Claude two ways and Hermes cannot tell which from the request: an OpenRouter
-passthrough (today, for every ``anthropic/*`` id) or GMI/Vertex (planned once GMI is back). The
+passthrough (today, for every ``anthropic/*`` id) or GMI (planned once GMI is back). The
 native Messages wire is the better transport, but on the OpenRouter path it re-writes the previous
 turn's prompt cache on 14-20% of consecutive calls in concurrent tool loops (measured 2026-09-06;
 NousResearch/api#227), so the session must ride chat/completions there. On GMI that is untested,
 and until it is measured ``auto`` never promotes to native.
 
 The upstream IS visible in the first RESPONSE: OpenRouter stamps ``provider`` (chat wire) and
-mints ``gen-<unix>-<rand>`` ids; GMI/Vertex responses carry neither. So ``auto`` starts every
+mints ``gen-<unix>-<rand>`` ids; GMI responses carry neither. So ``auto`` starts every
 session on chat (safe on both upstreams), reads the first response, and switches the session to
 native only when the upstream is GMI and native has been cleared for GMI. One decision per
 session, at call 1, before there is a cache to lose; later calls never flip.
@@ -36,7 +36,7 @@ def classify_upstream(response: Any) -> Optional[str]:
 
     Works on both wires: the OpenAI SDK object exposes ``.provider`` (OpenRouter's upstream name,
     e.g. ``"Anthropic"``, ``"Amazon Bedrock"``) and an OpenRouter-minted ``.id``; the Anthropic SDK
-    object has ``.id`` only. GMI/Vertex responses have Anthropic-native ``msg_…`` ids and no
+    object has ``.id`` only. GMI responses have Anthropic-native ``msg_…`` ids and no
     ``provider``. Anything else is unknown, and unknown never triggers a switch.
     """
     if response is None:

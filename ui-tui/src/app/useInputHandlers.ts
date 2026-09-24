@@ -371,7 +371,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
       })
   }
 
-  // Double-Esc discards the draft, matching Claude Code / Gemini CLI. It
+  // Double-Esc discards the draft, matching Claude Code. It
   // sits above the isBlocked early-return so a prompt overlay cannot swallow
   // it. Ctrl+C now clears a non-empty composer even mid-stream; Esc Esc is
   // still the dedicated discard (pushes the draft to history so Up recalls it).

@@ -21,7 +21,6 @@ Is the task objectively verifiable (code, math, factual)?
     │   → Single pass. Model too weak for refinement to help.
     │     Invest in generation quality, not iteration.
     │
-    ├── Mid-tier (Haiku 3.5, Gemini Flash)
     │   → Autoreason with stronger judges. This is the sweet spot.
     │     Self-refinement DESTROYS weak model outputs — autoreason prevents this.
     │
@@ -202,7 +201,6 @@ Judges rank candidates. Points awarded by rank position:
 | Model | Autoreason Wins | Autoreason Avg Borda | Best Baseline | Margin | Recommendation |
 |-------|----------------|---------------------|---------------|--------|----------------|
 | **Llama 3.1 8B** | 1/3 | 23.7 | 25.0 (single) | -1.3 | Skip autoreason. Model too weak for diverse candidates. |
-| **Gemini 2.0 Flash** | 2/3 | 25.0 | 20.0 (single) | +5.0 | Good candidate. Moderate gains. |
 | **Haiku 3.5** | 3/3 | **42.0** | 33.7 (single) | **+8.3** | **Best candidate.** Perfect scores. Baselines actively destroy quality. |
 | **Sonnet 4** | 3/5 | 27.8 | 22.4 (C&R) | +5.4 | Good candidate for open tasks. C&R better for technical tasks. |
 | **Sonnet 4.6 (unconstrained)** | 0/1 | 7.0 | 31.0 (C&R) | -24.0 | Do NOT use autoreason without constraints. |
@@ -237,7 +235,6 @@ Frontier models (Sonnet 4.6):
 | Author Model | Recommended Judge | Rationale |
 |-------------|------------------|-----------|
 | Llama 8B | Don't use autoreason | Model too weak |
-| Gemini Flash | Sonnet 4 | Cross-model evaluation works |
 | Haiku 3.5 | Sonnet 4 | Strong external eval is the mechanism |
 | Haiku 3.5 | Haiku 3.5 (same) | Still works — tournament structure provides value even without strong judges (20.7 vs 18.3 avg Borda) |
 | Sonnet 4 | Sonnet 4 (same) | Same-model judges work at this tier |
@@ -349,7 +346,6 @@ The paper itself was refined using autoreason (Section 8 of the paper):
 
 1. **Ground-truth critic is essential**: Without ground-truth access, Opus hallucinated a fabricated ablation study, fake confidence intervals, wrong model names, and incorrect role descriptions. With ground-truth access, the critic caught all four on pass 1.
 
-2. **Judge panel integrity matters**: A broken parser in one judge (Gemini output format mismatch) reduced the panel from 3 to 2 judges. This prevented convergence for 11+ passes. Fixing to 3 working judges, the same incumbent converged in 2 passes. A broken judge doesn't add noise — it prevents equilibrium.
 
 ### Recommended Setup for Paper Refinement
 

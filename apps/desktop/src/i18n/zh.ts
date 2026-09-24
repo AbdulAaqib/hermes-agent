@@ -937,10 +937,6 @@ export const zh = defineLocale({
           model: 'Mistral TTS 模型',
           voiceId: 'Mistral 语音'
         },
-        gemini: {
-          model: 'Gemini TTS 模型',
-          voice: 'Gemini 语音'
-        },
         neutts: {
           model: 'NeuTTS 模型',
           device: 'NeuTTS 设备'
@@ -3498,7 +3494,6 @@ export const zh = defineLocale({
       fireworks: { short: '直接模型 API', description: '直接访问 Fireworks AI 托管的模型。' },
       openrouter: { short: '一个密钥，多个模型', description: '用一个密钥访问数百个模型。适合新安装的默认选择。' },
       openai: { short: 'GPT 级模型', description: '直接访问 OpenAI 模型。' },
-      gemini: { short: 'Gemini 模型', description: '直接访问 Google Gemini 模型。' },
       xai: { short: 'Grok 模型', description: '直接访问 xAI Grok 模型。' },
       local: {
         short: '自托管',

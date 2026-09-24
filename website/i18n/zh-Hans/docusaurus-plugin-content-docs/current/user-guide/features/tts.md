@@ -23,7 +23,6 @@ Hermes Agent 支持跨所有消息平台的文字转语音（TTS）输出和语�
 | **OpenAI TTS** | 良好 | 付费 | `VOICE_TOOLS_OPENAI_KEY` |
 | **MiniMax TTS** | 优秀 | 付费 | `MINIMAX_API_KEY` |
 | **Mistral (Voxtral TTS)** | 优秀 | 付费 | `MISTRAL_API_KEY` |
-| **Google Gemini TTS** | 优秀 | 免费额度 | `GEMINI_API_KEY` |
 | **xAI TTS** | 优秀 | 付费 | `XAI_API_KEY` |
 | **NeuTTS** | 良好 | 免费（本地） | 无需 |
 | **KittenTTS** | 良好 | 免费（本地） | 无需 |
@@ -43,7 +42,6 @@ Hermes Agent 支持跨所有消息平台的文字转语音（TTS）输出和语�
 ```yaml
 # In ~/.hermes/config.yaml
 tts:
-  provider: "edge"              # "edge" | "elevenlabs" | "openai" | "minimax" | "mistral" | "gemini" | "xai" | "neutts" | "kittentts" | "piper"
   speed: 1.0                    # Global speed multiplier (provider-specific settings override this)
   edge:
     voice: "en-US-AriaNeural"   # 322 voices, 74 languages
@@ -65,8 +63,6 @@ tts:
   mistral:
     model: "voxtral-mini-tts-2603"
     voice_id: "c69964a6-ab8b-4f8a-9465-ec0925096ec8"  # Paul - Neutral (default)
-  gemini:
-    model: "gemini-2.5-flash-preview-tts"  # or gemini-2.5-pro-preview-tts
     voice: "Kore"               # 30 prebuilt voices: Zephyr, Puck, Kore, Enceladus, Gacrux, etc.
   xai:
     voice_id: "eve"             # or a custom voice ID — see docs below
@@ -109,7 +105,6 @@ tts:
 | xAI | 15000 |
 | MiniMax | 10000 |
 | Mistral | 4000 |
-| Google Gemini | 5000 |
 | ElevenLabs | 取决于模型（见下文） |
 | NeuTTS | 2000 |
 | KittenTTS | 2000 |
@@ -141,7 +136,6 @@ Telegram 语音气泡需要 Opus/OGG 音频格式：
 - **OpenAI、ElevenLabs 和 Mistral** 原生输出 Opus，无需额外配置
 - **Edge TTS**（默认）输出 MP3，需要 **ffmpeg** 进行转换
 - **MiniMax TTS** 输出 MP3，需要 **ffmpeg** 转换以在 Telegram 显示语音气泡
-- **Google Gemini TTS** 输出原始 PCM，使用 **ffmpeg** 直接编码为 Opus 以在 Telegram 显示语音气泡
 - **xAI TTS** 输出 MP3，需要 **ffmpeg** 转换以在 Telegram 显示语音气泡
 - **NeuTTS** 输出 WAV，同样需要 **ffmpeg** 转换以在 Telegram 显示语音气泡
 - **KittenTTS** 输出 WAV，同样需要 **ffmpeg** 转换以在 Telegram 显示语音气泡

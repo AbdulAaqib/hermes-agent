@@ -16,7 +16,6 @@ Hermes Agent 通过 FAL.ai 根据文字提示生成图像。默认内置 8 个�
 | `fal-ai/flux-2/klein/9b` *（默认）* | `<1s` | 快、文字清晰 | $0.006/MP |
 | `fal-ai/flux-2-pro` | ~6s | 棚拍级写实 | $0.03/MP |
 | `fal-ai/z-image/turbo` | ~2s | 中英双语，6B | $0.005/MP |
-| `fal-ai/nano-banana-pro` | ~8s | Gemini 3 Pro、推理与文字渲染 | $0.15/张（1K） |
 | `fal-ai/gpt-image-1.5` | ~15s | 强指令遵循 | $0.034/张 |
 | `fal-ai/ideogram/v3` | ~5s | 排版最佳 | $0.03–0.09/张 |
 | `fal-ai/recraft/v4/pro/text-to-image` | ~8s | 设计 / 品牌系统 / 可交付生产 | $0.25/张 |

@@ -89,7 +89,6 @@ Shows full app info including input/output schema.
 - `falai/flux-dev-lora` - FLUX.2 Dev (high quality)
 - `falai/flux-2-klein-lora` - FLUX.2 Klein (fastest)
 - `infsh/sdxl` - Stable Diffusion XL
-- `google/gemini-3-pro-image-preview` - Gemini 3 Pro
 - `xai/grok-imagine-image` - Grok image generation
 
 ### Video Generation

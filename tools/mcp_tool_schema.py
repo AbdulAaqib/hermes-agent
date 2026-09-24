@@ -68,7 +68,7 @@ def _rewrite_local_refs(node):
 
 def _repair_object_shape(node):
     """Recursively fill a missing object ``type``, ensure ``properties`` (so ``required``
-    can't dangle) and prune ``required`` to names present in ``properties`` (Gemini 400s
+    can't dangle) and prune ``required`` to names present in ``properties`` (strict providers 400
     otherwise)."""
     if isinstance(node, list):
         return [_repair_object_shape(item) for item in node]
@@ -94,7 +94,7 @@ def _repair_object_shape(node):
 
 # Lazy (schema-cache registered) servers are available: the first real call spawns/connects them (#56832).
 def _normalize_mcp_input_schema(schema: dict | None) -> dict:
-    """Normalize MCP input schemas so one form is valid on OpenAI, Anthropic, Gemini and
+    """Normalize MCP input schemas so one form is valid on OpenAI, Anthropic and
     Moonshot. Order matters: ``definitions`` -> ``$defs``; nullable ``anyOf`` unions collapsed
     to the non-null branch (Anthropic rejects nullable branches; optionality lives in the
     parent's ``required``; the ``nullable: true`` hint is kept so runtime coercion can map a
@@ -104,7 +104,7 @@ def _normalize_mcp_input_schema(schema: dict | None) -> dict:
     * Missing or ``null`` ``type`` on an object-shaped node is coerced to ``"object"`` (some servers omit
     it). See PR #4897. * When an ``object`` node lacks ``properties``, an empty ``properties`` dict is added
     so ``required`` entries don't dangle. * ``required`` arrays are pruned to only names that exist in
-    ``properties``; otherwise Google AI Studio / Gemini 400s with ``property is not defined``. See PR #4651.
+    ``properties``; otherwise strict providers 400 with ``property is not defined``. See PR #4651.
     * MCP/Pydantic optional fields commonly arrive as ``anyOf: [{...}, {"type": "null"}], default: null``.
     """
     if not schema:

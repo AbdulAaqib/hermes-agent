@@ -16,7 +16,6 @@ Full docs: https://hermes-agent.nousresearch.com/docs/integrations/providers
 | minimax-oauth | OAuth | `hermes auth add minimax-oauth` |
 | copilot | Token | `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` (Copilot device flow — `gh auth login` tokens do NOT work) |
 | copilot-acp | External CLI | Copilot CLI on PATH or `COPILOT_CLI_PATH` |
-| gemini | API key | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |
 | xai | API key | `XAI_API_KEY` (SuperGrok OAuth also supported) |
 | deepseek | API key | `DEEPSEEK_API_KEY` |
 | zai (GLM) | API key | `GLM_API_KEY` / `ZAI_API_KEY` |
@@ -26,7 +25,6 @@ Full docs: https://hermes-agent.nousresearch.com/docs/integrations/providers
 | xiaomi | API key | `XIAOMI_API_KEY` |
 | huggingface | Token | `HF_TOKEN` |
 | fireworks / novita / nvidia / deepinfra / gmi / arcee / stepfun / upstage / kilocode / ai-gateway / opencode-zen / opencode-go / ollama-cloud | API key | `<NAME>_API_KEY` |
-| bedrock / vertex / azure-foundry | Cloud SDK / key | AWS SDK creds / Vertex ADC / `AZURE_FOUNDRY_API_KEY` |
 | custom | Config | `model.base_url` + `model.api_key` in config.yaml |
 
 Multiple credentials per provider pool and rotate automatically (`hermes auth`).
@@ -69,6 +67,5 @@ neither set the key is resolved from the alias HOST, never carried over from
 the provider that was active before the switch.
 
 Built-in aliases (catalog-resolved against the active provider): `sonnet`,
-`opus`, `haiku`, `claude`, `gpt5`, `gpt`, `codex`, `o3`, `o4`, `gemini`,
 `deepseek`, `grok`, `llama`, `qwen`, `minimax`, `nemotron`, `kimi`, `glm`,
 `step`, `mimo`, `trinity`.

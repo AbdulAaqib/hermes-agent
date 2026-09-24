@@ -60,10 +60,6 @@ function prettifyBase(base: string): string {
     return base.replace(/^gpt-/i, 'GPT-')
   }
 
-  if (/^gemini-/i.test(base)) {
-    return base.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ')
-  }
-
   return titleCase(base.replace(/-/g, ' '))
 }
 

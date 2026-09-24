@@ -719,8 +719,6 @@ export const ar = defineLocale({
       'tts.minimax.voiceId': 'صوت MiniMax',
       'tts.mistral.model': 'نموذج Mistral TTS',
       'tts.mistral.voiceId': 'صوت Mistral',
-      'tts.gemini.model': 'نموذج Gemini TTS',
-      'tts.gemini.voice': 'صوت Gemini',
       'tts.neutts.model': 'نموذج NeuTTS',
       'tts.neutts.device': 'جهاز NeuTTS',
       'tts.kittentts.model': 'نموذج KittenTTS',
@@ -2430,10 +2428,6 @@ export const ar = defineLocale({
       openai: {
         short: 'نماذج من فئة GPT',
         description: 'وصول مباشر إلى نماذج OpenAI.'
-      },
-      gemini: {
-        short: 'نماذج Gemini',
-        description: 'وصول مباشر إلى نماذج Google Gemini.'
       },
       xai: {
         short: 'نماذج Grok',

@@ -237,7 +237,6 @@ The judge uses the `goal_judge` auxiliary task. By default it resolves to your m
 auxiliary:
   goal_judge:
     provider: openrouter
-    model: google/gemini-3-flash-preview
 ```
 
 The judge call is small (~200 output tokens) and runs once per turn, so a cheap fast model is usually the right call.

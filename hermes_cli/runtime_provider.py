@@ -745,7 +745,6 @@ def _api_key_provider_runtime(provider, pconfig, requested_provider, model_cfg, 
 
 # ── the resolution ladder ──────────────────────────────────────────────────────────────────
 
-_VERTEX_NAMES = ("vertex", "google-vertex", "vertex-ai", "gcp-vertex", "vertexai")
 _LOCAL_BYPASS_CLOUD_HOSTS = ("openrouter.ai", "anthropic.com", "openai.com")
 
 
@@ -758,20 +757,6 @@ def _raise_if_provider_disabled(requested_provider: str) -> None:
     if isinstance(block, dict) and not _config_mod.is_provider_enabled(block):
         raise ValueError(f"provider {requested_provider!r} is disabled in config "
                          f"(providers.{requested_provider}.enabled: false)")
-
-
-def _resolve_vertex_runtime(requested_provider: str) -> Dict[str, Any]:
-    """Vertex AI (OAuth2). The credential *path* (GOOGLE_APPLICATION_CREDENTIALS) must never be
-    treated as a static API key; a short-lived token is minted per call, and mid-session expiry is
-    recovered on 401 by run_agent._try_refresh_vertex_client_credentials()."""
-    from agent.vertex_adapter import get_vertex_config
-    token, base_url = get_vertex_config()
-    if not token or not base_url:
-        raise AuthError("Vertex AI credentials could not be resolved. Vertex uses OAuth2 (not a static API key): provide a "
-                        "service-account JSON via GOOGLE_APPLICATION_CREDENTIALS (or VERTEX_CREDENTIALS_PATH) in ~/.hermes/.env, "
-                        "or run 'gcloud auth application-default login' for ADC. Set the GCP project/region under vertex: in "
-                        "config.yaml if they aren't embedded in the credentials. Run `hermes setup` to install Vertex support.")
-    return _runtime("vertex", "chat_completions", base_url.rstrip("/"), token, source="vertex-oauth", requested_provider=requested_provider)
 
 
 def _resolve_requested_shortcuts(requested_provider, explicit_api_key, explicit_base_url, target_model) -> Optional[Dict[str, Any]]:
@@ -792,8 +777,6 @@ def _resolve_requested_shortcuts(requested_provider, explicit_api_key, explicit_
         return _resolve_azure_foundry_runtime(requested_provider=requested_provider, model_cfg=_get_model_config(),
                                               explicit_api_key=explicit_api_key, explicit_base_url=explicit_base_url,
                                               target_model=target_model)
-    if requested_provider in _VERTEX_NAMES:
-        return _resolve_vertex_runtime(requested_provider)
     return None
 
 
@@ -837,7 +820,7 @@ def resolve_runtime_provider(*, requested: Optional[str] = None, explicit_api_ke
     """Resolve runtime provider credentials for agent execution. Ladder (order is behavior — each
     rung returns or raises, else falls to the next):
       1. disabled-provider guard (``providers.<name>.enabled: false``)
-      2. requested-name shortcuts: moa, anthropic@azure, azure-foundry, vertex
+      2. requested-name shortcuts: moa, anthropic@azure, azure-foundry
       3. named custom provider / llamacpp alias / bare-custom direct alias
       4. local-endpoint bypass (no explicit creds, config base_url at a non-cloud host)
       5. ``auth.resolve_provider`` → OpenCode free tier → explicit --api-key/--base-url path

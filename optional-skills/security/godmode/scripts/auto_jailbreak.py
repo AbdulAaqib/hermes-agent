@@ -142,7 +142,6 @@ MODEL_STRATEGIES = {
         },
     },
     # Google models — refusal inversion + rebel genius
-    "gemini": {
         "order": ["refusal_inversion", "boundary_inversion", "prefill_only", "parseltongue"],
         "system_templates": {
             "refusal_inversion": (
@@ -301,8 +300,6 @@ def _detect_model_family(model: str) -> str:
         return "claude"
     if "gpt" in model_lower or "openai" in model_lower:
         return "gpt"
-    if "gemini" in model_lower or "google" in model_lower:
-        return "gemini"
     if "grok" in model_lower or "x-ai" in model_lower:
         return "grok"
     if "hermes" in model_lower or "nous" in model_lower:

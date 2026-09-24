@@ -746,10 +746,6 @@ export const ja = defineLocale({
           model: 'Mistral TTS モデル',
           voiceId: 'Mistral 音声'
         },
-        gemini: {
-          model: 'Gemini TTS モデル',
-          voice: 'Gemini 音声'
-        },
         neutts: {
           model: 'NeuTTS モデル',
           device: 'NeuTTS デバイス'
@@ -2836,7 +2832,6 @@ export const ja = defineLocale({
         description: '1 つのキーで数百のモデルをホスト。新規インストールのデフォルトとして最適。'
       },
       openai: { short: 'GPT クラスのモデル', description: 'OpenAI モデルへの直接アクセス。' },
-      gemini: { short: 'Gemini モデル', description: 'Google Gemini モデルへの直接アクセス。' },
       xai: { short: 'Grok モデル', description: 'xAI Grok モデルへの直接アクセス。' },
       local: {
         short: 'セルフホスト',

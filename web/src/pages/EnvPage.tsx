@@ -53,8 +53,6 @@ const PROVIDER_GROUPS: { prefix: string; name: string; priority: number }[] = [
   { prefix: "DASHSCOPE_", name: "DashScope (Qwen)", priority: 2 },
   { prefix: "HERMES_QWEN_", name: "DashScope (Qwen)", priority: 2 },
   { prefix: "DEEPSEEK_", name: "DeepSeek", priority: 3 },
-  { prefix: "GOOGLE_", name: "Gemini", priority: 4 },
-  { prefix: "GEMINI_", name: "Gemini", priority: 4 },
   { prefix: "GLM_", name: "GLM / Z.AI", priority: 5 },
   { prefix: "ZAI_", name: "GLM / Z.AI", priority: 5 },
   { prefix: "Z_AI_", name: "GLM / Z.AI", priority: 5 },

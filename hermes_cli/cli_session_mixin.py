@@ -442,7 +442,7 @@ class CLISessionMixin:
     def _discard_session_if_empty(self, session_id: Optional[str]) -> bool:
         """Drop a just-ended session row that never gained content (quit-immediately, /new,
         /clear) so it doesn't clutter ``/resume``. ``SessionDB.delete_session_if_empty`` only
-        removes rows with no messages, no title and no children (gemini-cli#27770 port)."""
+        removes rows with no messages, no title and no children."""
         from cli import logger
         if not self._session_db or not session_id:
             return False

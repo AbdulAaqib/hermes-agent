@@ -202,7 +202,7 @@ class CLIInfoMixin:
                 "designed for use with Hermes Agent.[/]")
             self._console_print(
                 "[dim]   They lack tool-calling capabilities required for agent workflows. "
-                "Consider using an agentic model (Claude, GPT, Gemini, DeepSeek, etc.).[/]")
+                "Consider using an agentic model (Claude, GPT, DeepSeek, etc.).[/]")
             self._console_print("[dim]   Switch with: /model sonnet  or  /model gpt5[/]")
 
         # Project-local skills one-liner: trusted → count; untrusted-with-skills → point at

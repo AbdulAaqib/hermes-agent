@@ -36,7 +36,6 @@ description: "通过 inference 运行 150+ AI 应用"
 
 ## 使用场景
 
-- 用户要求生成图像（FLUX、Reve、Seedream、Grok、Gemini image）
 - 用户要求生成视频（Veo、Wan、Seedance、OmniHuman）
 - 用户询问 inference.sh 或 infsh
 - 用户希望运行 AI 应用而无需管理各个提供商的 API
@@ -95,8 +94,6 @@ infsh app list --search image
 # FLUX Dev with LoRA
 infsh app run falai/flux-dev-lora --input '{"prompt": "sunset over mountains", "num_images": 1}' --json
 
-# Gemini 图像生成
-infsh app run google/gemini-2-5-flash-image --input '{"prompt": "futuristic city", "num_images": 1}' --json
 
 # Seedream (ByteDance)
 infsh app run bytedance/seedream-5-lite --input '{"prompt": "nature scene"}' --json

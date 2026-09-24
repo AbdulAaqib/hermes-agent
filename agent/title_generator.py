@@ -302,7 +302,7 @@ def generate_title(
             extra_body={"response_format": _TITLE_RESPONSE_FORMAT},
             # The module contract above promises thinking-disabled operation,
             # but nothing enforced it: with the aux default reasoning_effort
-            # "" (provider default), Gemini enables internal thinking and
+            # "" (provider default), some models enable internal thinking and
             # bills thought tokens against max_tokens=64 — the JSON payload
             # never lands, and the prose fallback stores the opening fence
             # ("```json") as the session title (#91927).

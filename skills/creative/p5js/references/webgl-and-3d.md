@@ -243,7 +243,6 @@ let geo = new p5.Geometry(detailX, detailY, function() {
 
 ## GLSL Shaders
 
-### createShader (Vertex + Fragment)
 
 ```javascript
 let myShader;

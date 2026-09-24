@@ -126,7 +126,6 @@ class AcmeProfile(ProviderProfile):
         context 包含：session_id、provider_preferences、model、base_url、
         reasoning_config。默认：空 dict。"""
         # 示例：OpenRouter 的 provider-preferences 块，
-        # Gemini 的 thinking_config 转换。
         return {}
 
     def build_api_kwargs_extras(self, *, reasoning_config=None, **context):
@@ -149,7 +148,6 @@ class AcmeProfile(ProviderProfile):
 | 插件 | 参考原因 |
 |---|---|
 | `plugins/model-providers/openrouter/` | 带 provider preferences 的聚合器，公开模型目录 |
-| `plugins/model-providers/gemini/` | `thinking_config` 转换（原生 + OpenAI 兼容嵌套形式） |
 | `plugins/model-providers/kimi-coding/` | `OMIT_TEMPERATURE`、`extra_body.thinking`、顶层 `reasoning_effort` |
 | `plugins/model-providers/qwen-oauth/` | 消息规范化、`cache_control` 注入、VL 高分辨率 |
 | `plugins/model-providers/nous/` | 归因标签、"禁用时省略 reasoning" |
@@ -170,7 +168,6 @@ register_provider(ProviderProfile(
     env_vars=("GMI_API_KEY",),
     base_url="https://gmi-staging.internal.example.com/v1",
     auth_type="api_key",
-    default_aux_model="google/gemini-3.1-flash-lite-preview",
 ))
 ```
 

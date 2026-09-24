@@ -46,7 +46,7 @@ beforeEach(() => {
   $localModelsEnabled.set(true)
   setModelVisibilityOpen(false)
   getGlobalModelOptions.mockResolvedValue({
-    providers: [{ models: ['gemini-3.1-pro', 'gemini-2.5-flash'], name: 'Google', slug: 'google' }]
+    providers: [{ models: ['claude-opus-5', 'claude-haiku-4-5'], name: 'Anthropic', slug: 'anthropic' }]
   })
 })
 
@@ -92,33 +92,31 @@ function renderMenu() {
 // which is exactly the drift extracting this component was meant to prevent.
 describe('the catalog owns model curation', () => {
   it('honours the stored Edit Models shortlist', async () => {
-    setVisibleModels(new Set([modelVisibilityKey('google', 'gemini-2.5-flash')]))
+    setVisibleModels(new Set([modelVisibilityKey('google', 'claude-haiku-4-5')]))
 
     renderMenu()
 
-    await screen.findByText(/Gemini 2\.5 Flash/i)
-    expect(screen.queryByText(/Gemini 3\.1 Pro/i)).toBeNull()
+    await screen.findByText(/Claude Haiku 4.5/i)
+    expect(screen.queryByText(/Claude Opus 5/i)).toBeNull()
   })
 
   it('still finds a hidden model by search — curation narrows the default view, not the catalog', async () => {
-    setVisibleModels(new Set([modelVisibilityKey('google', 'gemini-2.5-flash')]))
+    setVisibleModels(new Set([modelVisibilityKey('google', 'claude-haiku-4-5')]))
 
     renderMenu()
-    await screen.findByText(/Gemini 2\.5 Flash/i)
+    await screen.findByText(/Claude Haiku 4.5/i)
 
     const input = screen.getByRole('textbox', { name: 'Search models' })
 
-    fireEvent.change(input, { target: { value: 'gemini-3.1' } })
+    fireEvent.change(input, { target: { value: 'claude-opus-5' } })
 
     await vi.waitFor(() => {
       // The fold makes this id-style query highlight the spaced label: the
-      // row renders as <mark>Gemini 3.1</mark> + ' Pro'.
-      expect(screen.getByText('Gemini 3.1', { selector: 'mark' })).toBeDefined()
-      // Display name is "Gemini 3.1 pro" (no title-case for gemini ids); the
-      // row label span carries it (plus the effort meta suffix).
+      // row renders as <mark>Claude Opus 5</mark>.
+      expect(screen.getByText('Claude Opus 5', { selector: 'mark' })).toBeDefined()
       expect(
         screen.getByText((_, element) =>
-          Boolean(element?.classList.contains('truncate') && (element?.textContent ?? '').startsWith('Gemini 3.1 pro'))
+          Boolean(element?.classList.contains('truncate') && (element?.textContent ?? '').startsWith('Claude Opus 5'))
         )
       ).toBeDefined()
     })
@@ -126,7 +124,7 @@ describe('the catalog owns model curation', () => {
 
   it('offers Edit Models without the host wiring it up', async () => {
     renderMenu()
-    await screen.findByText(/Gemini 3\.1 Pro/i)
+    await screen.findByText(/Claude Opus 5/i)
 
     fireEvent.click(screen.getByText('Edit models…'))
 
@@ -153,7 +151,7 @@ describe('in-flight local downloads', () => {
     // No llamacpp provider in the catalog (first-ever download).
     $localRuntimeJobs.set([DOWNLOAD_JOB])
     renderMenu()
-    await screen.findByText(/Gemini 3\.1 Pro/i)
+    await screen.findByText(/Claude Opus 5/i)
 
     const row = screen.getByText('Qwen3.8 Flash Next (UD-Q4_K_XL)')
 
@@ -166,7 +164,7 @@ describe('in-flight local downloads', () => {
     getGlobalModelOptions.mockResolvedValue({
       providers: [
         { models: ['Qwen3.6-27B-UD-Q4_K_XL'], name: 'Local', slug: 'llamacpp' },
-        { models: ['gemini-3.1-pro'], name: 'Google', slug: 'google' }
+        { models: ['claude-opus-5'], name: 'Anthropic', slug: 'anthropic' }
       ]
     })
     $localRuntimeJobs.set([DOWNLOAD_JOB])
@@ -194,14 +192,14 @@ describe('in-flight local downloads', () => {
     getGlobalModelOptions.mockResolvedValue({
       providers: [
         { models: ['Qwen3.6-27B-UD-Q4_K_XL'], name: 'Local', slug: 'llamacpp' },
-        { models: ['gemini-3.1-pro'], name: 'Google', slug: 'google' }
+        { models: ['claude-opus-5'], name: 'Anthropic', slug: 'anthropic' }
       ]
     })
     $localRuntimeJobs.set([DOWNLOAD_JOB])
     renderMenu()
 
     // Staged models exist and a download is running — none of it shows.
-    await screen.findByText(/Gemini 3\.1 Pro/i)
+    await screen.findByText(/Claude Opus 5/i)
     expect(screen.queryByText(/Qwen3\.6 27B/i)).toBeNull()
     expect(screen.queryByText('Qwen3.8 Flash Next (UD-Q4_K_XL)')).toBeNull()
     expect(screen.queryByText('Local')).toBeNull()

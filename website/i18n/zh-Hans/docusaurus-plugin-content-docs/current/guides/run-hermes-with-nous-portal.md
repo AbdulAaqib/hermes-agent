@@ -100,7 +100,6 @@ Hey, search the web for "Hermes Agent release notes" and summarize the top 3 hit
 ```bash
 /model anthropic/claude-sonnet-4.6     # 最佳通用 agentic 模型
 /model openai/gpt-5.4                  # 强推理 + 工具调用
-/model google/gemini-2.5-pro           # 超大上下文窗口
 /model deepseek/deepseek-v3.2          # 高性价比编程模型
 /model anthropic/claude-opus-4.6       # 处理复杂问题的重量级模型
 ```

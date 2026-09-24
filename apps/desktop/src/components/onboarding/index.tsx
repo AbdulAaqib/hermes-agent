@@ -102,12 +102,6 @@ const API_KEY_OPTIONS: ApiKeyOption[] = [
     docsUrl: 'https://platform.openai.com/api-keys'
   },
   {
-    id: 'gemini',
-    name: 'Google Gemini',
-    envKey: 'GEMINI_API_KEY',
-    docsUrl: 'https://aistudio.google.com/app/apikey'
-  },
-  {
     id: 'xai',
     name: 'xAI Grok',
     envKey: 'XAI_API_KEY',

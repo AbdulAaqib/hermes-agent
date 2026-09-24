@@ -109,7 +109,7 @@ class AchievementEngineTests(unittest.TestCase):
     def test_model_provider_metrics_are_aggregated(self):
         sessions = [
             {"model_names": {"openai/gpt-5", "anthropic/claude-sonnet-4"}},
-            {"model_names": {"google/gemini-pro", "mistral/large"}},
+            {"model_names": {"google/gemma-pro", "mistral/large"}},
             {"model_names": {"qwen/qwen3"}},
         ]
 

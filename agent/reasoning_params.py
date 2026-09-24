@@ -12,7 +12,7 @@ from utils import base_url_host_matches
 
 # Static OpenRouter fallback when the live /v1/models capability cache is cold.
 _OPENROUTER_REASONING_PREFIXES = (
-    "deepseek/", "anthropic/", "openai/", "x-ai/", "google/gemini-2", "google/gemma-4",
+    "deepseek/", "anthropic/", "openai/", "x-ai/", "google/gemma-4",
     "qwen/qwen3", "tencent/hy", "xiaomi/",
 )
 
@@ -179,13 +179,11 @@ class ReasoningParamsMixin:
     @staticmethod
     def _sanitize_tool_calls_for_strict_api(api_msg: dict, model: "str | None" = None) -> dict:
         """Strip Codex Responses fields from tool_calls for strict Chat Completions APIs (Mistral, Fireworks
-        400/422 on unknown fields). ``extra_content`` (Gemini thought_signature) is kept only for Gemini-family
-        models. Builds new dicts so the internal history keeps the Codex fields for a later fallback."""
+        400/422 on unknown fields). Builds new dicts so the internal history keeps the Codex fields for a later fallback."""
         tool_calls = api_msg.get("tool_calls")
         if not isinstance(tool_calls, list):
             return api_msg
-        from agent.transports.chat_completions import _model_consumes_thought_signature
-        strip = {"call_id", "response_item_id"} | (set() if _model_consumes_thought_signature(model) else {"extra_content"})
+        strip = {"call_id", "response_item_id", "extra_content"}
         api_msg["tool_calls"] = [{k: v for k, v in tc.items() if k not in strip} if isinstance(tc, dict) else tc
                                  for tc in tool_calls]
         return api_msg

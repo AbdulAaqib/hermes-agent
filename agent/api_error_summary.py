@@ -162,9 +162,6 @@ class ApiErrorSummaryMixin:
                 parts.append(f"Ray {ray.group(1).strip()}")
             return " — ".join(parts)
 
-        # GeminiAPIError already composes a clean one-liner with guidance; don't re-extract the raw body.
-        if type(error).__name__ == "GeminiAPIError":
-            return redact_sensitive_text(raw[:1000])
 
         # JSON body errors from OpenAI/Anthropic SDKs
         body = getattr(error, "body", None)

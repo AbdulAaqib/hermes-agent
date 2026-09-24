@@ -703,60 +703,6 @@ def _model_flow_stepfun(config, current_model=""):
         config["model"] = dict(model)
 
 
-def _model_flow_vertex(config, current_model=""):
-    """Google Vertex AI (Gemini via the OpenAI-compatible endpoint). Auth is OAuth2 (service-account
-    JSON or ADC): the credential *path* lives in .env (VERTEX_CREDENTIALS_PATH /
-    GOOGLE_APPLICATION_CREDENTIALS); project ID and region are non-secret, saved under ``vertex:``."""
-    from hermes_cli.auth import _prompt_model_selection
-    from hermes_cli.config import load_config, get_env_value
-    from hermes_cli.models import _PROVIDER_MODELS
-
-    # 1. Credential source detection (fast, no network / no google-auth import).
-    sa_path = (get_env_value("VERTEX_CREDENTIALS_PATH") or get_env_value("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
-    if sa_path:
-        print(f"  Vertex credentials: service account JSON ({sa_path}) ✓")
-    else:
-        _say("  Vertex credentials: Application Default Credentials (ADC)",
-             "    Vertex uses OAuth2, not a static API key. Either:",
-             "      • run 'gcloud auth application-default login', or",
-             "      • set VERTEX_CREDENTIALS_PATH in ~/.hermes/.env to a service account JSON")
-    print()
-
-    vertex_cfg = load_config().get("vertex")
-    if not isinstance(vertex_cfg, dict):
-        vertex_cfg = {}
-
-    # 2. Project ID (optional — falls back to the project embedded in creds).
-    current_project = str(vertex_cfg.get("project_id") or "").strip()
-    project_input = _ask(f"  GCP project ID [{current_project or 'from credentials'}]: ", cancel_msg="")
-    if project_input is None:
-        return
-    project_id = project_input or current_project
-
-    # 3. Region (default global — required for the Gemini 3.x previews).
-    current_region = str(vertex_cfg.get("region") or "global").strip() or "global"
-    region_input = _ask(f"  Vertex region [{current_region}]: ", cancel_msg="")
-    if region_input is None:
-        return
-    region = region_input or current_region
-
-    # 4. Model selection (curated list — Vertex has no /models listing route).
-    model_list = _PROVIDER_MODELS.get("vertex", []) or ["google/gemini-3-pro-preview", "google/gemini-3-flash-preview"]
-    host = "aiplatform.googleapis.com" if region == "global" else f"{region}-aiplatform.googleapis.com"
-    base_url_preview = f"https://{host}/v1beta1/projects/<project>/locations/{region}/endpoints/openapi"
-    selected = _prompt_model_selection(model_list, current_model=current_model, confirm_provider="vertex", confirm_base_url=base_url_preview)
-
-    def _finish(cfg, _model):
-        vcfg = _ensure_dict_section(cfg, "vertex")
-        vcfg["project_id"] = project_id
-        vcfg["region"] = region
-
-    # base_url is computed at runtime from project+region; do not pin it.
-    # api_mode is dropped: chat_completions is the profile default.
-    _finish_model(selected, "vertex", f"  Default model set to: {selected} (via Google Vertex AI, {region})", no_change="  No change.",
-                  drop_base_url=True, drop_api_mode=True, finish=_finish)
-
-
 def _select_zai_endpoint(current_base: str) -> str:
     """Picker for the official Z.AI endpoints (``ZAI_ENDPOINTS`` in ``hermes_cli.auth``, kept in
     sync with the probe list) plus a custom-proxy option. Returns the selected base URL;
@@ -782,36 +728,6 @@ def _select_zai_endpoint(current_base: str) -> str:
         print("  Invalid URL — must start with http:// or https://. Keeping current value.")
         return current_base
     return override.rstrip("/")
-
-
-_GEMINI_FREE_TIER_NOTICE = (
-    "", "❌ This Google API key is on the free tier (<= 250 requests/day for gemini-2.5-flash).",
-    "   Hermes typically makes 3-10 API calls per user turn (tool iterations + auxiliary tasks),",
-    "   so the free tier is exhausted after a handful of messages and cannot sustain",
-    "   an agent session.", "",
-    "   To use Gemini with Hermes, enable billing on your Google Cloud project and regenerate",
-    "   the key in a billing-enabled project: https://aistudio.google.com/apikey", "",
-    "   Alternatives with workable free usage: DeepSeek, OpenRouter (free models), Groq, Nous.", "",
-    "Not saving Gemini as the default provider.")
-
-
-def _gemini_tier_ok(existing_key: str, pconfig, base_url_env: str) -> bool:
-    """Gemini free-tier gate: free-tier daily quotas (<= 250 RPD for Flash) are exhausted in a
-    handful of agent turns, so refuse a free-tier key. The probe is best-effort; network or
-    auth errors fall through without blocking."""
-    try:
-        from agent.gemini_native_adapter import probe_gemini_tier
-    except Exception:
-        return True
-    print("  Checking Gemini API tier...")
-    tier = probe_gemini_tier(existing_key, _env_base_url(base_url_env) or pconfig.inference_base_url)
-    if tier == "free":
-        _say(*_GEMINI_FREE_TIER_NOTICE)
-        return False
-    # "unknown" (network/auth/unexpected response): don't block; the runtime 429 handler
-    # surfaces free-tier guidance if needed.
-    _say("  Tier check: paid ✓" if tier == "paid" else "  Tier check: could not verify (proceeding anyway).", "")
-    return True
 
 
 def _lmstudio_models(pconfig, curated, api_key, base_url):
@@ -916,8 +832,6 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
         _, existing_key, abort = _ensure_flow_api_key(provider_id, pconfig)
         if abort:
             return
-    if provider_id == "gemini" and existing_key and not _gemini_tier_ok(existing_key, pconfig, base_url_env):
-        return
 
     # Optional base URL override. Precedence: env var → config.yaml model.base_url → registry
     # default; reading config.yaml keeps a saved remote URL from being overwritten with

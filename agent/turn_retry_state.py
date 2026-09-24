@@ -23,7 +23,6 @@ class TurnRetryState:
     # Copilot surfaces a stale credential as a 400 ``model_not_available_for_integrator``
     # / ``model_not_supported``, not a 401 — separate guard from the 401 one.
     copilot_stale_cred_retry_attempted: bool = False
-    vertex_auth_retry_attempted: bool = False
 
     # Format / payload recovery guards
     thinking_sig_retry_attempted: bool = False

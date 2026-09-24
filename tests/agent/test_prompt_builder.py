@@ -30,7 +30,6 @@ from agent.prompt_builder import (
     TOOL_USE_ENFORCEMENT_MODELS,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
     PARALLEL_TOOL_CALL_GUIDANCE,
-    GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     MEMORY_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
     PLATFORM_HINTS,
@@ -1142,12 +1141,10 @@ class TestExecutionGuidanceModels:
         assert any(p in "meta/muse-spark-1.3-contributor" for p in TOOL_USE_ENFORCEMENT_MODELS)
         assert any(p in "meta/muse-spark-1.3-contributor" for p in EXECUTION_GUIDANCE_MODELS)
 
-    def test_excludes_google_and_claude(self):
-        # Gemini/Gemma get GOOGLE_MODEL_OPERATIONAL_GUIDANCE instead;
+    def test_excludes_claude(self):
         # Claude doesn't exhibit the targeted failure modes.
         from agent.prompt_builder import EXECUTION_GUIDANCE_MODELS
-        for fam in ("gemini", "gemma", "claude"):
-            assert fam not in EXECUTION_GUIDANCE_MODELS
+        assert "claude" not in EXECUTION_GUIDANCE_MODELS
 
 
 class TestParallelToolCallGuidance:

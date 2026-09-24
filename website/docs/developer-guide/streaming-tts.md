@@ -39,18 +39,12 @@ swaps your voice for a different provider just to get streaming.
 
 To override, set `tts.streaming.provider` in your `config.yaml`:
 
-- a provider name (`elevenlabs`, `gemini`, `openai`, `xai`) pins that streamer
-- `auto` walks the priority list `elevenlabs → gemini → openai → xai` and uses
   the first one whose credentials resolve — an explicit opt-in to "best
   chunked voice available"
 
 ```yaml
 tts:
-  provider: gemini
   streaming:
-    provider: gemini      # or "auto"
-  gemini:
-    model: gemini-2.5-flash-preview-tts
     voice: Kore
 ```
 
@@ -60,7 +54,6 @@ tts:
 |-------------|---------------------------------------|-------------|-------------|
 | elevenlabs  | chunked HTTP (`pcm_24000`)            | yes         | `ELEVENLABS_API_KEY` / `tts.elevenlabs` |
 | openai      | chunked HTTP (`with_streaming_response`, `pcm`) | yes | `tts.openai.api_key` → env → managed gateway |
-| gemini      | SSE (`streamGenerateContent?alt=sse`) | yes         | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
 | xai         | WebSocket (`wss://api.x.ai/v1/tts`)   | yes         | xAI OAuth or `XAI_API_KEY` |
 | edge, piper, kitten, neutts, mistral, minimax, deepinfra, … | — | no (per-sentence sync fallback) | as usual |
 

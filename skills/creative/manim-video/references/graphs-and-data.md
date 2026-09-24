@@ -101,7 +101,6 @@ g = Graph(
     edges=[(1, 2), (2, 3), (3, 4), (4, 5), (5, 1), (1, 3)],
     layout="spring",  # or "circular", "kamada_kawai", "planar", "tree"
     labels=True,
-    vertex_config={"fill_color": PRIMARY},
     edge_config={"stroke_color": SUBTLE},
 )
 self.play(Create(g))

@@ -162,7 +162,6 @@ _AUTH_TYPE_ENV_VARS = {
         ("AWS_REGION", lambda d, var: f"{d.label} ({var})"),
         ("AWS_PROFILE", lambda d, var: f"{d.label} ({var})"),
     ),
-    "vertex": (("VERTEX_CREDENTIALS_PATH", lambda d, var: f"{d.label} — service account JSON path (or use ADC)"),),
 }
 
 
@@ -211,7 +210,7 @@ def _catalog_provider_env_metadata() -> dict:
 
         # Providers without api_key_env_vars would otherwise be invisible on
         # the Keys tab: AWS-SDK providers (Bedrock) authenticate via the AWS
-        # credential chain, Vertex via OAuth2 (service-account JSON path or
+        # credential chain (service-account JSON path or
         # ADC — a path, not a secret). Tag their env vars to the card.
         for var, describe in _AUTH_TYPE_ENV_VARS.get(d.auth_type, ()):
             existing = meta.get(var, {})
@@ -305,7 +304,6 @@ _CREDENTIAL_PROBES: dict[str, tuple[str, str]] = {
     "OPENROUTER_API_KEY": ("https://openrouter.ai/api/v1/key", "bearer"),
     "OPENAI_API_KEY": ("https://api.openai.com/v1/models", "bearer"),
     "XAI_API_KEY": ("https://api.x.ai/v1/models", "bearer"),
-    "GEMINI_API_KEY": ("https://generativelanguage.googleapis.com/v1beta/models", "query"),
 }
 
 

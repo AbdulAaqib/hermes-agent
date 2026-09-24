@@ -806,10 +806,6 @@ export const ru = defineLocale({
           model: 'Модель TTS Mistral',
           voiceId: 'Голос Mistral'
         },
-        gemini: {
-          model: 'Модель TTS Gemini',
-          voice: 'Голос Gemini'
-        },
         neutts: {
           model: 'Модель NeuTTS',
           device: 'Устройство NeuTTS'
@@ -3136,7 +3132,6 @@ export const ru = defineLocale({
         description: 'Сотни моделей за одним ключом. Хороший вариант по умолчанию для новых установок.'
       },
       openai: { short: 'модели класса GPT', description: 'Прямой доступ к моделям OpenAI.' },
-      gemini: { short: 'модели Gemini', description: 'Прямой доступ к моделям Google Gemini.' },
       xai: { short: 'модели Grok', description: 'Прямой доступ к моделям xAI Grok.' },
       local: {
         short: 'self-hosted',

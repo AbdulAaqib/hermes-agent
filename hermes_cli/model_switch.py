@@ -100,7 +100,7 @@ _HERMES_MODEL_WARNING = (
     "Nous Research Hermes 3 & 4 models are NOT agentic and are not designed "
     "for use with Hermes Agent. They lack the tool-calling capabilities "
     "required for agent workflows. Consider using an agentic model instead "
-    "(Claude, GPT, Gemini, DeepSeek, etc.).")
+    "(Claude, GPT, DeepSeek, etc.).")
 
 # Match only the real Nous Research Hermes 3 / 4 chat families; a bare substring check
 # false-positived on tool-capable local Modelfiles like ``hermes-brain:qwen3-14b-ctx16k``.
@@ -152,7 +152,6 @@ MODEL_ALIASES: dict[str, ModelIdentity] = {
     "codex":     ModelIdentity("openai", "codex"),
     "o3":        ModelIdentity("openai", "o3"),
     "o4":        ModelIdentity("openai", "o4"),
-    "gemini":    ModelIdentity("google", "gemini"),
     "deepseek":  ModelIdentity("deepseek", "deepseek-chat"),
     "grok":      ModelIdentity("x-ai", "grok"),
     "llama":     ModelIdentity("meta-llama", "llama"),

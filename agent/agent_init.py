@@ -100,8 +100,6 @@ def _provider_default_routes(provider: str) -> set[str]:
             if normalize_registry_provider(normalize_model_provider(provider_id)) == provider:
                 add(getattr(config, "inference_base_url", ""))
 
-    if provider == "gemini":
-        routes.update(f"{route.rstrip('/')}/openai" for route in list(routes))
     return routes
 
 
@@ -1555,7 +1553,7 @@ def _custom_provider_configured_base_url(
 
 # Provider ids whose runtime is resolved first-hand (never a named custom provider).
 _RUNTIME_FIRST_PROVIDER_IDS = {
-    "auto", "moa", "vertex", "google-vertex", "vertex-ai", "gcp-vertex", "vertexai",
+    "auto", "moa",
 }
 
 
@@ -1788,20 +1786,9 @@ def _select_context_engine(_agent_cfg):
 
 
 def _compressor_max_tokens(agent):
-    """``agent.max_tokens``, or the native-Gemini adapter default when unset: generateContent
-    still sends maxOutputTokens=65,535 and the threshold is pct×(window − max_tokens), so
-    reserving 0 let the provider 400 before compaction fired."""
+    """``agent.max_tokens`` when explicitly configured, else ``None``."""
     if agent.max_tokens is not None:
         return agent.max_tokens
-    with suppress(Exception):
-        from agent.gemini_native_adapter import (
-            GEMINI_DEFAULT_MAX_OUTPUT_TOKENS, is_native_gemini_base_url
-        )
-        _gemini_provider = str(agent.provider or "").strip().lower() in {
-            "gemini", "google", "google-gemini", "google-ai-studio",
-        }
-        if _gemini_provider or is_native_gemini_base_url(agent.base_url):
-            return GEMINI_DEFAULT_MAX_OUTPUT_TOKENS
     return None
 
 
@@ -1918,7 +1905,7 @@ def _warn_nonagentic_hermes_model(agent):
                 "⚠ Nous Research Hermes 3 & 4 models are NOT agentic — they "
                 "lack reliable tool-calling for agent workflows (delegation, "
                 "cron, proactive tools). Consider an agentic model instead "
-                "(Claude, GPT, Gemini, Qwen-Coder, etc.)."
+                "(Claude, GPT, Qwen-Coder, etc.)."
             )
             agent._emit_warning(_user_msg)
             _ra().logger.warning(_hermes_warn)

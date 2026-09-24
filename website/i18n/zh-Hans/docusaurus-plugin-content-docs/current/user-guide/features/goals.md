@@ -124,7 +124,6 @@ goals:
 auxiliary:
   goal_judge:
     provider: openrouter
-    model: google/gemini-3-flash-preview
 ```
 
 裁判调用量小（约 200 个输出 token），每轮运行一次，因此廉价快速的模型通常是正确选择。

@@ -273,7 +273,7 @@ class TestResolveOpenaiAudioApiKeyIsProfileScoped:
     loaded at boot, not the profile the current turn belongs to — so a raw
     read here would let one profile's voice reply or voice-note transcription
     run on (and be billed to) another profile's OpenAI account. Same contract
-    ``agent/vertex_adapter`` and the WeChat send path already follow.
+    the WeChat send path already follows this pattern.
     """
 
     @pytest.fixture(autouse=True)

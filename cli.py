@@ -2887,7 +2887,7 @@ class HermesCLI(CLIProcessNotificationsMixin, CLIAgentSetupMixin, CLICommandsMix
         # /update: relaunch() runs from run() after prompt_toolkit restored terminal modes.
         # /exit --delete: when True, the current session's SQLite history and on-disk transcripts are
         # deleted during shutdown. Set by process_command() when the user runs /exit --delete or /quit
-        # --delete. Ported from google-gemini/gemini-cli#19332.
+        # --delete. Ported from an upstream CLI issue.
         self._pending_relaunch: list[str] | None = None
         self._last_ctrl_c_time = 0
         # Blocking-prompt overlays (clarify / sudo / approval / slash-confirm / model picker).

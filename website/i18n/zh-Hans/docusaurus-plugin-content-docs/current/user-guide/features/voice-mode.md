@@ -407,7 +407,6 @@ stt:
 
 # 文字转语音（TTS）
 tts:
-  provider: "edge"                 # "edge"（免费）| "elevenlabs" | "openai" | "neutts" | "minimax" | "mistral" | "gemini" | "xai" | "kittentts" | "piper"
   edge:
     voice: "en-US-AriaNeural"      # 322 种声音，74 种语言
   elevenlabs:

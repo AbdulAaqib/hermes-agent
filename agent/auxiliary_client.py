@@ -520,7 +520,6 @@ def _extract_url_query_params(url: str):
 _stale_base_url_warned = False
 
 _PROVIDER_ALIASES = {
-    "google": "gemini", "google-gemini": "gemini", "google-ai-studio": "gemini",
     "x-ai": "xai", "x.ai": "xai", "grok": "xai",
     "glm": "zai", "z-ai": "zai", "z.ai": "zai", "zhipu": "zai",
     "kimi": "kimi-coding", "moonshot": "kimi-coding",
@@ -645,8 +644,8 @@ def _compression_threshold_for_model(
 # Aux "fast tier" families, fastest first (measured p50 titling latency). Matched as substrings
 # against the LIVE /v1/models catalog because pinned ids rot; rolling "-latest" aliases lead.
 _FAST_MODEL_FAMILIES: tuple = (
-    "gpt-mini-latest", "gpt-nano-latest", "claude-haiku-latest", "gemini-flash-latest",
-    "gpt-5.4-nano", "gpt-5.4-mini", "gpt-5-mini", "haiku-4.5", "gemini-3.6-flash", "flash-lite",
+    "gpt-mini-latest", "gpt-nano-latest", "claude-haiku-latest",
+    "gpt-5.4-nano", "gpt-5.4-mini", "gpt-5-mini", "haiku-4.5", "flash-lite",
     "-nano", "-mini", "-flash", "haiku",
 )
 
@@ -770,11 +769,11 @@ def _get_aux_model_for_provider(provider_id: str, *, prefer_fast: bool = False) 
 # Fallback for providers without ProviderProfile.default_aux_model (plus some pinned here).
 # New providers should set default_aux_model instead.
 _API_KEY_PROVIDER_AUX_MODELS_FALLBACK: Dict[str, str] = {
-    "gemini": "gemini-3.6-flash", "zai": "glm-4.5-flash", "kimi-coding": "kimi-k2-turbo-preview",
+    "zai": "glm-4.5-flash", "kimi-coding": "kimi-k2-turbo-preview",
     "stepfun": "step-3.5-flash", "kimi-coding-cn": "kimi-k2-turbo-preview",
-    "gmi": "google/gemini-3.1-flash-lite-preview", "anthropic": "claude-haiku-4-5-20251001",
-    "ai-gateway": "google/gemini-3-flash", "opencode-zen": "gemini-3-flash", "opencode-go": "glm-5",
-    "kilocode": "google/gemini-3.6-flash", "ollama-cloud": "nemotron-3-nano:30b",
+    "gmi": "openai/gpt-5.4-mini", "anthropic": "claude-haiku-4-5-20251001",
+    "ai-gateway": "openai/gpt-5.4-mini", "opencode-zen": "openai/gpt-5.4-mini", "opencode-go": "glm-5",
+    "kilocode": "openai/gpt-5.4-mini", "ollama-cloud": "nemotron-3-nano:30b",
     "tencent-tokenhub": "hy4-preview", "tencent-tokenplan": "hy4-preview",
     # No "deepinfra": its aux model lives on the ProviderProfile (read first).
 }
@@ -906,7 +905,7 @@ auxiliary_is_nous: bool = False
 # silently, and a paid default meant spend the user never opted into. User-configured values
 # are honored untouched (_warn_paid_lane_once fires).
 _OPENROUTER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
-_NOUS_MODEL = "google/gemini-3.6-flash"
+_NOUS_MODEL = "deepseek/deepseek-v4-flash-0731"
 _NOUS_DEFAULT_BASE_URL = "https://inference-api.nousresearch.com/v1"
 _ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
 _AUTH_JSON_PATH = get_hermes_home() / "auth.json"
@@ -2075,12 +2074,8 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
         if model is None:
             continue  # skip provider if we don't know a valid aux model
         logger.debug("Auxiliary text client: %s (%s)%s", pconfig.name, model, via)
-        # Native Gemini, else OpenAI-wire + Anthropic rewrap.
+        # OpenAI-wire + Anthropic rewrap.
         base_url = _to_openai_base_url(raw_base_url)
-        if provider_id == "gemini":
-            from agent.gemini_native_adapter import GeminiNativeClient, is_native_gemini_base_url
-            if is_native_gemini_base_url(base_url):
-                return GeminiNativeClient(api_key=api_key, base_url=base_url), model
         if base_url_host_matches(base_url, "api.kimi.com"):
             headers = {"User-Agent": "claude-code/0.1.0"}
         elif base_url_host_matches(base_url, "githubcopilot.com"):
@@ -3013,7 +3008,7 @@ def _contains_any(text: str, needles: Tuple[str, ...]) -> bool:
 
 
 # Billing-body markers (credit exhaustion wrapped in 402/403/404/429 bodies), plus daily/weekly quota
-# exhaustion (functionally credit exhaustion; "resource exhausted" is the Vertex/gRPC quota phrasing —
+# exhaustion (functionally credit exhaustion; "resource exhausted" is a common gRPC quota phrasing —
 # also serialized by SDK wrappers and NIM as RESOURCE_EXHAUSTED / ResourceExhausted / resource-exhausted).
 _PAYMENT_KEYWORDS = (
     "credits", "insufficient funds", "can only afford", "billing", "payment required",
@@ -3525,19 +3520,11 @@ def _refresh_xai_oauth_credentials() -> bool:
     return _creds_have_api_key(resolve_xai_oauth_runtime_credentials(force_refresh=True))
 
 
-def _refresh_vertex_credentials() -> bool:
-    """Mirrors run_agent's Vertex refresh; the cache key ignores the rotating bearer, so
-    without the eviction that follows, a ~1h-expired aux Vertex client 401s forever."""
-    from agent.vertex_adapter import get_vertex_config
-    token, base_url = get_vertex_config()
-    return bool(isinstance(token, str) and token.strip() and isinstance(base_url, str) and base_url.strip())
-
-
 # Each refresher returns True when a usable credential exists; the caller then evicts cached clients.
 _CREDENTIAL_REFRESHERS: Dict[str, Callable[..., bool]] = {
     "copilot": _refresh_copilot_credentials, "openai-codex": _refresh_codex_credentials,
     "nous": _refresh_nous_credentials, "anthropic": _refresh_anthropic_credentials,
-    "xai-oauth": _refresh_xai_oauth_credentials, "vertex": _refresh_vertex_credentials,
+    "xai-oauth": _refresh_xai_oauth_credentials,
 }
 
 
@@ -4328,10 +4315,6 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
         return AsyncAnthropicAuxiliaryClient(sync_client), model
     if isinstance(sync_client, BedrockAuxiliaryClient):
         return AsyncBedrockAuxiliaryClient(sync_client), model
-    with contextlib.suppress(ImportError):
-        from agent.gemini_native_adapter import GeminiNativeClient, AsyncGeminiNativeClient
-        if isinstance(sync_client, GeminiNativeClient):
-            return AsyncGeminiNativeClient(sync_client), model
     # ACP shims (subprocess, not an HTTP pool) are already async-safe and opt out of the wrapper.
     if _client_declares(sync_client, "HERMES_SKIP_ASYNC_WRAP"):
         return sync_client, model
@@ -4447,32 +4430,6 @@ def _build_bedrock_client(provider: str, model: Optional[str], *, raw_codex: boo
     else:
         client = BedrockAuxiliaryClient(region, final_model)
         logger.debug("resolve_provider_client: bedrock converse (%s, %s)", final_model, region)
-    return client, final_model
-
-
-def _build_vertex_client(provider: str, model: Optional[str]) -> Tuple[Optional[Any], Optional[str]]:
-    """Google Vertex AI: Gemini via the OpenAI-compatible endpoint with an OAuth2 bearer (standard OpenAI client)."""
-    try:
-        from agent.vertex_adapter import get_vertex_config, has_vertex_credentials
-    except ImportError:
-        logger.warning("resolve_provider_client: vertex requested but google-auth not installed")
-        return None, None
-    if not has_vertex_credentials():
-        logger.debug("resolve_provider_client: vertex requested but no GCP credentials found")
-        return None, None
-    token, base_url = get_vertex_config()
-    if not token or not base_url:
-        logger.warning("resolve_provider_client: vertex requested but could not mint token / resolve project")
-        return None, None
-    final_model = _normalize_resolved_model(model or "google/gemini-3-flash-preview", provider)
-    try:
-        # Aliased import: a bare `from openai import OpenAI` would shadow the module-level lazy proxy.
-        from openai import OpenAI as _VertexOpenAI
-        client = _VertexOpenAI(api_key=token, base_url=base_url)
-    except Exception as exc:
-        logger.warning("resolve_provider_client: cannot create Vertex client: %s", exc)
-        return None, None
-    logger.debug("resolve_provider_client: vertex (%s)", final_model)
     return client, final_model
 
 
@@ -4849,12 +4806,6 @@ def _resolve_api_key_branch(req: _ResolveRequest, pconfig: Any, resolve_creds: C
     if req.explicit_base_url and provider != "actual":
         base_url = _to_openai_base_url(req.explicit_base_url.strip().rstrip("/"))
     final_model = _normalize_resolved_model(req.model or _get_aux_model_for_provider(provider), provider)
-    if provider == "gemini":
-        from agent.gemini_native_adapter import GeminiNativeClient, is_native_gemini_base_url
-        if is_native_gemini_base_url(base_url):
-            client = GeminiNativeClient(api_key=api_key, base_url=base_url)
-            logger.debug("resolve_provider_client: %s (%s)", provider, final_model)
-            return _route_client(req, client, final_model)
     headers = _endpoint_default_headers(base_url, provider, is_vision=req.is_vision, xai=True)
     client = _create_openai_client(api_key=api_key, base_url=base_url, **({"default_headers": headers} if headers else {}))
     # Copilot GPT-5+ models (except gpt-5-mini) are only reachable via the Responses API;
@@ -4934,9 +4885,7 @@ def _resolve_registry_branch(req: _ResolveRequest) -> _ResolveResult:
         return _resolve_api_key_branch(req, pconfig, resolve_api_key_provider_credentials)
     if auth_type == "external_process":
         return _resolve_external_process_branch(req, resolve_external_process_provider_credentials(provider))
-    if auth_type == "vertex":
-        client, final_model = _build_vertex_client(provider, req.model)
-    elif auth_type == "aws_sdk":
+    if auth_type == "aws_sdk":
         client, final_model = _build_bedrock_client(provider, req.model, raw_codex=req.raw_codex)
     elif auth_type in {"oauth_device_code", "oauth_external"}:
         # nous / openai-codex / xai-oauth already returned from their explicit branches.
@@ -6011,20 +5960,6 @@ def _nous_on_messages_wire(provider_norm: str, model: str) -> bool:
 
 
 _NVIDIA_PROVIDER_NAMES = {"nvidia", "nvidia-nim", "nim", "build-nvidia", "nemotron"}
-_GEMINI_NATIVE_PROVIDER_NAMES = {"gemini", "google", "google-gemini", "google-ai-studio"}
-
-
-def _is_gemini_native_route(provider_norm: str, effective_base: str) -> bool:
-    """Gemini native by provider name, else (best-effort) by base URL shape."""
-    if provider_norm in _GEMINI_NATIVE_PROVIDER_NAMES:
-        return True
-    if not effective_base:
-        return False
-    try:
-        from agent.gemini_native_adapter import is_native_gemini_base_url
-        return is_native_gemini_base_url(effective_base)
-    except Exception:
-        return False
 
 
 def _forwards_max_tokens(provider: str, provider_norm: str, model: str, effective_base: str, task: Optional[str]) -> bool:
@@ -6032,9 +5967,9 @@ def _forwards_max_tokens(provider: str, provider_norm: str, model: str, effectiv
 
     No default cap elsewhere (omitted = provider default; avoids max_completion_tokens / ZAI-vision
     quirks). Forward only where mandatory or honored: Anthropic Messages wire (400 without it);
-    NVIDIA NIM (empty choices[] when omitted); MoA reference slots; Gemini native (fixed 65,535
-    ceiling otherwise); OpenRouter (budgets the FULL window when omitted → 402 on low credit);
-    managed local llama-server (uncapped decode with no EOS burns the GPU to the context window).
+    NVIDIA NIM (empty choices[] when omitted); MoA reference slots; OpenRouter (budgets the FULL
+    window when omitted → 402 on low credit); managed local llama-server (uncapped decode with no
+    EOS burns the GPU to the context window).
     """
     return (
         _is_anthropic_compat_endpoint(provider, effective_base)
@@ -6042,7 +5977,6 @@ def _forwards_max_tokens(provider: str, provider_norm: str, model: str, effectiv
         or provider_norm in _NVIDIA_PROVIDER_NAMES
         or base_url_host_matches(effective_base, "integrate.api.nvidia.com")
         or str(task) == "moa_reference"
-        or _is_gemini_native_route(provider_norm, effective_base)
         or provider_norm == "openrouter"
         or base_url_host_matches(effective_base, "openrouter.ai")
         or _is_managed_local_endpoint(effective_base)
@@ -6050,7 +5984,7 @@ def _forwards_max_tokens(provider: str, provider_norm: str, model: str, effectiv
 
 
 def _dedupe_tool_names(tools: list, provider: str, model: str) -> list:
-    """Drop duplicate tool names (Vertex/Azure/Bedrock 400 on them) with a warning."""
+    """Drop duplicate tool names (strict providers 400 on them) with a warning."""
     seen: set = set()
     deduped: list = []
     for tool in tools:

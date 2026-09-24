@@ -188,8 +188,6 @@ _REGISTRY_ROWS: Tuple[Any, ...] = (
     ProviderConfig(
         "copilot-acp", "GitHub Copilot ACP", "external_process",
         inference_base_url=DEFAULT_COPILOT_ACP_BASE_URL, base_url_env_var="COPILOT_ACP_BASE_URL"),
-    ("gemini", "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta",
-     ("GOOGLE_API_KEY", "GEMINI_API_KEY"), "GEMINI_BASE_URL"),
     ("zai", "Z.AI / GLM", "https://api.z.ai/api/paas/v4",
      ("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"), "GLM_BASE_URL"),
     # Legacy platform.moonshot.ai keys use this endpoint (OpenAI-compat); sk-kimi- (Kimi Code)
@@ -245,9 +243,6 @@ _REGISTRY_ROWS: Tuple[Any, ...] = (
     ("ollama-cloud", "Ollama Cloud", DEFAULT_OLLAMA_CLOUD_BASE_URL, ("OLLAMA_API_KEY",), "OLLAMA_BASE_URL"),
     ("bedrock", "AWS Bedrock", "https://bedrock-runtime.us-east-1.amazonaws.com", (), "BEDROCK_BASE_URL",
      "aws_sdk"),
-    # No static inference_base_url: Vertex's endpoint is computed per request from project_id +
-    # region (agent/vertex_adapter.py build_vertex_base_url), not a fixed host.
-    ("vertex", "Google Vertex AI", "", (), "", "vertex"),
     ("azure-foundry", "Azure Foundry", "", ("AZURE_FOUNDRY_API_KEY",), "AZURE_FOUNDRY_BASE_URL"))
 PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
     p.id: p for p in (r if isinstance(r, ProviderConfig) else _api_key_provider(*r) for r in _REGISTRY_ROWS)
@@ -1090,7 +1085,6 @@ def _explicit_pool_entry_present(normalized: str) -> bool:
 # Set by Claude Code itself, not by the user explicitly configuring anthropic in Hermes.
 _IMPLICIT_ENV_VARS = frozenset({"CLAUDE_CODE_OAUTH_TOKEN"})
 _EXPLICIT_POOL_SOURCES = frozenset({"device_code", "loopback_pkce", "hermes_pkce", "manual"})
-_VERTEX_PROVIDER_IDS = ("vertex", "google-vertex", "vertex-ai", "gcp-vertex", "vertexai")
 
 
 def _env_secret(name: str) -> bool:
@@ -1132,15 +1126,7 @@ def _pool_entry_is_explicit(entry: Any) -> bool:
 
 
 def _keyless_provider_has_explicit_config(normalized: str) -> bool:
-    """Vertex / Bedrock count as explicit when Hermes-scoped routing config is present.
-
-    Uses has_explicit_vertex_config(), NOT has_vertex_credentials(): the latter also counts an
-    ambient GOOGLE_APPLICATION_CREDENTIALS path (commonly set for unrelated GCP work). Only
-    Hermes-scoped signals (VERTEX_PROJECT_ID / vertex.project_id / VERTEX_CREDENTIALS_PATH) count
-    here."""
-    if normalized in _VERTEX_PROVIDER_IDS:
-        from agent.vertex_adapter import has_explicit_vertex_config
-        return bool(has_explicit_vertex_config())
+    """Bedrock counts as explicit when Hermes-scoped routing config is present."""
     if normalized == "bedrock":
         from hermes_cli.config import load_config
         bedrock_cfg = load_config().get("bedrock")
@@ -1252,7 +1238,6 @@ def _refuse_env_adoption_if_config_corrupt() -> None:
 # table remains authoritative for existing names.
 _PROVIDER_ALIASES: Dict[str, str] = {
     "glm": "zai", "z-ai": "zai", "z.ai": "zai", "zhipu": "zai",
-    "google": "gemini", "google-gemini": "gemini", "google-ai-studio": "gemini",
     "x-ai": "xai", "x.ai": "xai", "grok": "xai",
     "xai-oauth": "xai-oauth", "x-ai-oauth": "xai-oauth",
     "grok-oauth": "xai-oauth", "xai-grok-oauth": "xai-oauth",

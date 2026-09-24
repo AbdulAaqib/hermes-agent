@@ -733,10 +733,6 @@ export const zhHant = defineLocale({
           model: 'Mistral TTS 模型',
           voiceId: 'Mistral 語音'
         },
-        gemini: {
-          model: 'Gemini TTS 模型',
-          voice: 'Gemini 語音'
-        },
         neutts: {
           model: 'NeuTTS 模型',
           device: 'NeuTTS 裝置'
@@ -2798,7 +2794,6 @@ export const zhHant = defineLocale({
       fireworks: { short: '直接模型 API', description: '直接存取 Fireworks AI 託管的模型。' },
       openrouter: { short: '一個金鑰，多個模型', description: '用一個金鑰存取數百個模型。適合新安裝的預設選擇。' },
       openai: { short: 'GPT 等級模型', description: '直接存取 OpenAI 模型。' },
-      gemini: { short: 'Gemini 模型', description: '直接存取 Google Gemini 模型。' },
       xai: { short: 'Grok 模型', description: '直接存取 xAI Grok 模型。' },
       local: {
         short: '自託管',

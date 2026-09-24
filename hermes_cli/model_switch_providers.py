@@ -317,19 +317,10 @@ def _pool_usable(slug: str) -> bool:
 
 
 def _overlay_has_env_creds(pid: str, hermes_slug: str, overlay, read_env) -> bool:
-    """Section-2 env/SDK credential check shared by the picker and the prefetch scan.
-
-    Vertex authenticates via OAuth2 (service-account JSON / ADC), not an API key, so it gets its
-    own probe; otherwise the provider is hidden from the picker even when fully configured."""
+    """Section-2 env/SDK credential check shared by the picker and the prefetch scan."""
     from hermes_cli.auth import PROVIDER_REGISTRY
     has_creds = False
-    if overlay.auth_type == "vertex":
-        try:
-            from agent.vertex_adapter import has_vertex_credentials
-            has_creds = has_vertex_credentials()
-        except Exception as exc:
-            logger.debug("Vertex credential check failed: %s", exc)
-    elif overlay.extra_env_vars:
+    if overlay.extra_env_vars:
         has_creds = _any_env(overlay.extra_env_vars, read_env)
     if not has_creds and overlay.auth_type == "api_key":
         for key in (pid, hermes_slug):

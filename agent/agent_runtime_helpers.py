@@ -1655,27 +1655,6 @@ def _ensure_copilot_headers(client_kwargs: dict) -> None:
         _ra().logger.debug("Copilot default-header guard skipped", exc_info=True)
 
 
-def _gemini_native_client(agent, client_kwargs: dict, httpx_verify, *, reason: str, shared: bool):
-    """Native Gemini client when the base_url is the Gemini API, else None."""
-    from agent.gemini_native_adapter import GeminiNativeClient, is_native_gemini_base_url
-    base_url = str(client_kwargs.get("base_url", "") or "")
-    if not is_native_gemini_base_url(base_url):
-        return None
-    safe_kwargs = {
-        k: v for k, v in client_kwargs.items()
-        if k in {"api_key", "base_url", "default_headers", "timeout", "http_client"}
-    }
-    if "http_client" not in safe_kwargs:
-        keepalive_http = agent._build_keepalive_http_client(base_url, verify=httpx_verify)
-        if keepalive_http is not None:
-            safe_kwargs["http_client"] = keepalive_http
-    client = GeminiNativeClient(**safe_kwargs)
-    _ra().logger.info(
-        "Gemini native client created (%s, shared=%s) %s", reason, shared, agent._client_log_context()
-    )
-    return client
-
-
 def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: bool) -> Any:
     from agent.auxiliary_client import _validate_base_url, _validate_proxy_env_urls
     from agent.ssl_verify import resolve_httpx_verify
@@ -1729,11 +1708,6 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
             agent.provider, reason, shared, agent._client_log_context(),
         )
         return provider_client
-    from agent.auxiliary_client import _GEMINI_NATIVE_PROVIDER_NAMES
-    if agent.provider in _GEMINI_NATIVE_PROVIDER_NAMES:
-        client = _gemini_native_client(agent, client_kwargs, httpx_verify, reason=reason, shared=shared)
-        if client is not None:
-            return client
     # TCP keepalives so dead provider connections are detected (~60s) instead of hanging in
     # CLOSE-WAIT. Injected into the local copy only, so each client gets its own httpx.Client;
     # pinned by tests/agent/test_create_openai_client_reuse.py and
@@ -2811,15 +2785,15 @@ def _realign_tool_result_names(messages: List[Dict[str, Any]]) -> List[Dict[str,
     #   surfaces only as a generic "Provider returned error". When tool_search defers MCP/plugin tools the
     #   model calls the bridge tool ``tool_call``, while ``make_tool_result_message()`` labels the result
     #   with the unwrapped internal tool name (``mcp__github__create_issue``) that dispatch, hooks, logging,
-    #   and guardrails need. #72089 fixed exactly this for the native Gemini adapter, which now prefers
-    #   ``tool_name_by_call_id`` over the result name; requests that reach Gemini through the
-    #   OpenAI-compatible path (OpenRouter, Vertex/LiteLLM proxies, any OpenAI-shaped gateway) skip that
+    #   and guardrails need. #72089 fixed exactly this for the native adapter, which now prefers
+    #   ``tool_name_by_call_id`` over the result name; requests that reach the provider through the
+    #   OpenAI-compatible path (OpenRouter, LiteLLM proxies, any OpenAI-shaped gateway) skip that
     #   translation entirely and still send the internal name on the wire. Normalizing here rather than in
-    #   the OpenAI-compat serializer keeps it provider-agnostic: Gemini reaches Hermes under many model
+    #   the OpenAI-compat serializer keeps it provider-agnostic: a model reaches Hermes under many model
     #   strings and base URLs, so sniffing for "is this really Google?" is unreliable, and every other
     #   provider either ignores the field or agrees with the call name. Runs on the per-call copy, so the
     #   stored trajectory keeps the real tool name for the session DB and the UI — only the wire payload
-    #   changes. A no-op for the native Gemini path, which already resolves the same name. A result whose
+    #   changes. A result whose
     #   assistant call frame is missing entirely never reaches here — pass 1 above drops it as an orphan —
     #   so the only results this pass sees are ones whose call name is knowable.
     call_names: Dict[str, str] = {}

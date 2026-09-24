@@ -127,7 +127,6 @@ class AcmeProfile(ProviderProfile):
         Context includes: session_id, provider_preferences, model, base_url,
         reasoning_config. Default: empty dict."""
         # Example: OpenRouter's provider-preferences block,
-        # Gemini's thinking_config translation.
         return {}
 
     def build_api_kwargs_extras(self, *, reasoning_config=None, **context):
@@ -174,7 +173,6 @@ Look at these bundled plugins for idioms:
 | Plugin | Why look |
 |---|---|
 | `plugins/model-providers/openrouter/` | Aggregator with provider preferences, public model catalog |
-| `plugins/model-providers/gemini/` | `thinking_config` translation (native + OpenAI-compat nested forms) |
 | `plugins/model-providers/kimi-coding/` | `OMIT_TEMPERATURE`, `extra_body.thinking`, top-level `reasoning_effort` |
 | `plugins/model-providers/qwen-oauth/` | Message normalization, `cache_control` injection, VL high-res |
 | `plugins/model-providers/nous/` | Attribution tags, "omit reasoning when disabled" |
@@ -195,7 +193,6 @@ register_provider(ProviderProfile(
     env_vars=("GMI_API_KEY",),
     base_url="https://gmi-staging.internal.example.com/v1",
     auth_type="api_key",
-    default_aux_model="google/gemini-3.1-flash-lite-preview",
 ))
 ```
 

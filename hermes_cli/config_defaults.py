@@ -122,7 +122,7 @@ DEFAULT_CONFIG = {
         "fast_auto_seconds": 60,
         # System-prompt guidance telling the model to call tools instead of describing actions.
         # "auto" = gpt/codex models; true/false = force for all models; or a list of model-name
-        # substrings (e.g. ["gpt", "codex", "gemini", "qwen"]).
+        # substrings (e.g. ["gpt", "codex", "qwen"]).
         "tool_use_enforcement": "auto",
         # Execution-discipline prompt block (tool persistence, tools for arithmetic/system facts,
         # read-back after external writes, count reconciliation, literal identifiers,
@@ -133,7 +133,7 @@ DEFAULT_CONFIG = {
         # When the model narrates an action ("I'll go check the logs...") but emits no tool call,
         # inject a "continue now, execute the tools" nudge and loop (max 2 nudges/turn). Corrective
         # sibling of tool_use_enforcement. "auto" = codex_responses api_mode only; true = all
-        # api_modes (fixes Gemini/Claude "stops after stating intent"); false = never; or a list of
+        # api_modes (fixes Claude "stops after stating intent"); false = never; or a list of
         # model-name substrings.
         "intent_ack_continuation": "auto",
         # Anti-stall guards: (1) identical-call loop breaker appends a notice when the same tool is
@@ -666,7 +666,7 @@ DEFAULT_CONFIG = {
     },
     # Auxiliary model config — provider/model per side task. provider "auto" = auto-detect;
     # empty model = provider's default aux model; all tasks fall back to
-    # openrouter:google/gemini-3-flash-preview when the configured provider is unavailable.
+    # openrouter:openai/gpt-5.4-mini when the configured provider is unavailable.
     # extra_body is forwarded verbatim as request body fields for that task, e.g. OpenRouter
     # routing prefs / Pareto Code floor:
     #   auxiliary:
@@ -685,7 +685,7 @@ DEFAULT_CONFIG = {
         # ":free" — a PAID lane is never used for background aux traffic even with
         # OPENROUTER_API_KEY set.
         "free_only": False,
-        # Override the auto-chain's OpenRouter fallback model (default google/gemini-3.6-flash,
+        # Override the auto-chain's OpenRouter fallback model (default nvidia/nemotron-3-ultra-550b-a55b:free,
         # PAID). Pair e.g. "nvidia/nemotron-3-ultra-550b-a55b:free" with free_only: true. A one-time
         # WARNING is logged whenever a non-":free" model is engaged.
         "openrouter_model": "",
@@ -1000,11 +1000,11 @@ DEFAULT_CONFIG = {
     },
     # Text-to-speech. Each provider accepts an optional `max_text_length:` override for the
     # per-request input-character cap; omit to use the provider's documented limit (OpenAI 4096, xAI
-    # 15000, MiniMax 10000, ElevenLabs 5k-40k model-aware, Gemini 32000, Edge 5000, Mistral 4000,
+    # 15000, MiniMax 10000, ElevenLabs 5k-40k model-aware, Edge 5000, Mistral 4000,
     # NeuTTS/KittenTTS 2000).
     "tts": {
         # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" |
-        # "gemini" | "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local)
+        # "deepinfra" | "neutts" (local) | "kittentts" (local) | "piper" (local)
         "provider": "edge",
         "edge": {
             # Popular: AriaNeural, JennyNeural, AndrewNeural, BrianNeural, SoniaNeural
@@ -1019,15 +1019,6 @@ DEFAULT_CONFIG = {
             # gpt-4o-mini-tts voices: alloy, ash, ballad, cedar, coral, echo, fable, marin, nova,
             # onyx, sage, shimmer, verse
             "voice": "alloy",
-        },
-        "gemini": {
-            "model": "gemini-2.5-flash-preview-tts",
-            "voice": "Kore",
-            # Gemini 3.1: aux-model rewrite inserts [audio tags] into the TTS script only.
-            "audio_tags": False,
-            # Optional local text file with performance direction; may include a `{transcript}`
-            # placeholder, else the live transcript is appended.
-            "persona_prompt_file": "",
         },
         "xai": {
             "voice_id": "eve",  # or a custom voice ID (docs.x.ai custom voices)
@@ -1231,7 +1222,7 @@ DEFAULT_CONFIG = {
     # cheaper/faster model. Uses the same runtime provider resolution as CLI/gateway startup, so
     # every configured provider is supported.
     "delegation": {
-        "model": "",  # e.g. "google/gemini-3-flash-preview" (empty = inherit parent)
+        "model": "",  # e.g. "openai/gpt-5.4-mini" (empty = inherit parent)
         "provider": "",  # e.g. "openrouter" (empty = inherit parent provider + credentials)
         # Fallback chain for delegated children (same entry format as the top-level list).
         # For an unpinned child, null = inherit the parent chain; [] = disable fallback.
@@ -2394,16 +2385,6 @@ DEFAULT_CONFIG = {
         # up and nothing is used.
         "guest": True,
     },
-    # Google Vertex AI (Gemini). Auth is OAuth2 from a service-account JSON or ADC, NOT an API key;
-    # the credential path lives in .env (VERTEX_CREDENTIALS_PATH / GOOGLE_APPLICATION_CREDENTIALS).
-    # Bridged to VERTEX_PROJECT_ID / VERTEX_REGION.
-    "vertex": {
-        # GCP project ID. Empty → project_id from the service-account JSON (or ADC).
-        "project_id": "",
-        # "global" is required for Gemini 3.x preview models (regional endpoints silently 404); use
-        # e.g. "us-central1" only if your models are region-pinned.
-        "region": "global",
-    },
     # Managed llama.cpp runtime (docs: user-guide/local-models): official binaries, one supervised
     # llama-server in router mode. No context/VRAM knobs by design.
     "local_runtime": {
@@ -2477,19 +2458,6 @@ OPTIONAL_ENV_VARS = {
     "OPENROUTER_API_KEY": _env("OpenRouter API key (for vision, web scraping helpers, and MoA)",
         "OpenRouter API key", url="https://openrouter.ai/keys", password=True, tools=["vision_analyze"],
         category="provider", advanced=True),
-    "GOOGLE_API_KEY": _prov("Google AI Studio API key (also recognized as GEMINI_API_KEY)",
-        "Google AI Studio API key", "https://aistudio.google.com/app/apikey"),
-    "GEMINI_API_KEY": _prov("Google AI Studio API key (alias for GOOGLE_API_KEY)", "Gemini API key",
-        "https://aistudio.google.com/app/apikey"),
-    "GEMINI_BASE_URL": _base_url("Google AI Studio", "Gemini"),
-    "VERTEX_CREDENTIALS_PATH": _prov(
-        "Path to a Google Cloud service account JSON for Vertex AI (Gemini). Vertex uses "
-        "OAuth2, not a static API key — this points at the credentials Hermes mints short-lived "
-        "tokens from. Falls back to GOOGLE_APPLICATION_CREDENTIALS, then to ADC (gcloud auth "
-        "application-default login). Set project/region under vertex: in config.yaml.",
-        "Vertex service account JSON path (leave empty to use ADC / "
-        "GOOGLE_APPLICATION_CREDENTIALS)", "https://cloud.google.com/iam/docs/keys-create-delete",
-        password=False),
     "XAI_API_KEY": _prov("xAI API key", "xAI API key", "https://console.x.ai/"),
     "XAI_BASE_URL": _base_url("xAI"),
     "NVIDIA_API_KEY": _prov("NVIDIA NIM API key (build.nvidia.com or local NIM endpoint)",

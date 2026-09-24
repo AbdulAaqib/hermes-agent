@@ -1733,7 +1733,6 @@ class Migrator:
             "ELEVENLABS_API_KEY": "ELEVENLABS_API_KEY",
             "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
             "DEEPSEEK_API_KEY": "DEEPSEEK_API_KEY",
-            "GEMINI_API_KEY": "GEMINI_API_KEY",
             "ZAI_API_KEY": "ZAI_API_KEY",
             "MINIMAX_API_KEY": "MINIMAX_API_KEY",
         }

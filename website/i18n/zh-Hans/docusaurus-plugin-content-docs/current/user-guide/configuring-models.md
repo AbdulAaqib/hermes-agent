@@ -53,8 +53,6 @@ Hermes 使用两类模型槽位：
 
 | 任务 | 何时覆盖 |
 |---|---|
-| **Title Gen（标题生成）** | 几乎总是。$0.10/M 的 flash 模型生成会话标题的效果与 Opus 相当。默认配置在 OpenRouter 上将此项设为 `google/gemini-3-flash-preview`。 |
-| **Vision（视觉）** | 当主模型是不支持视觉的编程模型时（如 Kimi、DeepSeek）。将其指向 `google/gemini-2.5-flash` 或 `gpt-4o-mini`。 |
 | **Compression（压缩）** | 当你在用 Opus/M2.7 的推理 token 来摘要上下文时。快速聊天模型以 1/50 的成本即可完成此工作。 |
 | **Approval（审批）** | 用于 `approval_mode: smart` — 由快速/廉价模型（haiku、flash、gpt-5-mini）决定是否自动批准低风险命令。此处使用昂贵模型是浪费。 |
 | **Web Extract（网页提取）** | 当你大量使用 `web_extract` 时。逻辑同压缩 — 摘要任务不需要推理能力。 |
@@ -96,12 +94,10 @@ model:
   api_mode: chat_completions
 ```
 
-**辅助覆盖示例（视觉任务使用 gemini-flash）：**
 ```yaml
 auxiliary:
   vision:
     provider: openrouter
-    model: google/gemini-2.5-flash
     base_url: ''
     api_key: ''
     timeout: 120
@@ -222,12 +218,10 @@ curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TO
 
 # 覆盖单个辅助任务
 curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TOKEN" \
-  -d '{"scope":"auxiliary","task":"vision","provider":"openrouter","model":"google/gemini-2.5-flash"}' \
   http://localhost:PORT/api/model/set
 
 # 将一个模型分配给所有辅助任务
 curl -X POST -H "Content-Type: application/json" -H "X-Hermes-Session-Token: $TOKEN" \
-  -d '{"scope":"auxiliary","task":"","provider":"openrouter","model":"google/gemini-2.5-flash"}' \
   http://localhost:PORT/api/model/set
 
 # 将所有辅助任务重置为 auto

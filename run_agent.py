@@ -1080,7 +1080,7 @@ class AIAgent(
 
     @staticmethod
     def _get_tool_call_name_static(tc) -> str:
-        """Function name of a tool_call entry (dict or object); Gemini requires it on every ``role: tool`` message."""
+        """Function name of a tool_call entry (dict or object); strict providers require it on every ``role: tool`` message."""
         if isinstance(tc, dict):
             fn = tc.get("function")
             return (fn.get("name", "") or "") if isinstance(fn, dict) else ""

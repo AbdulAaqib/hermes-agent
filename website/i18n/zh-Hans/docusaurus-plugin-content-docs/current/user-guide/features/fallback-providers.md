@@ -63,7 +63,6 @@ fallback_model:
 | GMI Cloud | `gmi` | `GMI_API_KEY`（可选：`GMI_BASE_URL`） |
 | StepFun | `stepfun` | `STEPFUN_API_KEY`（可选：`STEPFUN_BASE_URL`） |
 | Ollama Cloud | `ollama-cloud` | `OLLAMA_API_KEY` |
-| Google AI Studio | `gemini` | `GOOGLE_API_KEY`（别名：`GEMINI_API_KEY`） |
 | xAI（Grok） | `xai`（别名 `grok`） | `XAI_API_KEY`（可选：`XAI_BASE_URL`） |
 | xAI Grok OAuth（SuperGrok） | `xai-oauth`（别名 `grok-oauth`） | `hermes model` → xAI Grok OAuth（浏览器登录；需 SuperGrok 订阅） |
 | AWS Bedrock | `bedrock` | 标准 boto3 认证（`AWS_REGION` + `AWS_PROFILE` 或 `AWS_ACCESS_KEY_ID`） |
@@ -244,7 +243,6 @@ auxiliary:
 auxiliary:
   compression:
     provider: main                                    # 与其他辅助任务相同的提供商选项
-    model: google/gemini-3-flash-preview
     base_url: null                                    # 自定义 OpenAI 兼容端点
 ```
 
@@ -312,7 +310,6 @@ auxiliary:
     model: glm-4v-flash
     fallback_chain:
       - provider: openrouter
-        model: google/gemini-3-flash-preview
       - provider: nous
         model: anthropic/claude-sonnet-4
 
@@ -330,7 +327,6 @@ auxiliary:
 Hermes 将以下情况识别为等同于 402 额度耗尽的容量错误（而非瞬时速率限制）：
 
 - Bedrock / LiteLLM：`Too many tokens per day`、`daily limit`、`tokens per day`
-- Vertex AI / GCP：`quota exceeded`、`resource exhausted`、`RESOURCE_EXHAUSTED`
 - 通用：`daily quota`、`quota_exceeded`
 
 若你的提供商对每日配额耗尽返回不同的错误信息，而 Hermes 未触发备用，这是一个 bug——请附上确切的错误字符串提交 issue。
@@ -345,7 +341,6 @@ Hermes 将以下情况识别为等同于 402 额度耗尽的容量错误（而�
 auxiliary:
   compression:
     provider: "auto"                              # auto | openrouter | nous | main
-    model: "google/gemini-3-flash-preview"
 ```
 
 :::info 旧版迁移
@@ -363,7 +358,6 @@ auxiliary:
 ```yaml
 delegation:
   provider: "openrouter"                      # 覆盖所有子 Agent 的提供商
-  model: "google/gemini-3-flash-preview"      # 覆盖模型
   # base_url: "http://localhost:1234/v1"      # 或使用直接端点
   # api_key: "local-key"
 ```
@@ -382,7 +376,6 @@ cronjob(
     schedule="every 2h",
     prompt="Check server status",
     provider="openrouter",
-    model="google/gemini-3-flash-preview"
 )
 ```
 

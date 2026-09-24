@@ -30,7 +30,6 @@ from agent.errors import EmptyStreamError
 from agent.chat_completion_stream_monitor import StreamingWaitMonitor
 from agent.fast_mode import effective_request_overrides
 from agent.turn_context import substitute_api_content
-from agent.gemini_native_adapter import is_native_gemini_base_url
 # Remote endpoints must never be fingerprinted: the probe waterfall is only valid for local/LM-Studio/Ollama
 # boxes. Non-Ollama remotes (sglang, vLLM, OpenAI-compat) expose Ollama-compat endpoints that can
 # misidentify and, without an api_key, return 401 on every leg (issue #89863).
@@ -1472,8 +1471,8 @@ def _assistant_tool_call_dict(agent, tool_call, index: int) -> dict:
     tc_dict = {"id": call_id, "call_id": call_id, "response_item_id": response_item_id,
         "type": tool_call.type,
         "function": {"name": tool_call.function.name, "arguments": tool_call.function.arguments}}
-    # Preserve extra_content (Gemini thought_signature) or Gemini 3 thinking
-    # models 400 on the next request.
+    # Preserve extra_content (provider thought_signature) so it is sent back on
+    # subsequent API calls.
     # Tool-call arguments are intentionally NOT redacted here. This dict enters the in-memory conversation
     # history that is replayed to the model on every subsequent turn AND persisted to state.db, which is
     # itself replayed verbatim on session resume (get_messages_as_conversation). Masking a credential to
@@ -1484,8 +1483,8 @@ def _assistant_tool_call_dict(agent, tool_call, index: int) -> dict:
     # which this pass ever touched. Keeping secrets out of the replayable store is a separate
     # tokenization/vault concern, not something arg-redaction can deliver without breaking replay.
     # Storage-time redaction remains governed by the `security.redact_secrets` toggle. (#19798 introduced
-    # this; #43083 removed it.) Preserve extra_content (e.g. Gemini thought_signature) so it is sent back on
-    # subsequent API calls. Without this, Gemini 3 thinking models reject the request with a 400 error.
+    # this; #43083 removed it.) Preserve extra_content (e.g. a provider thought_signature) so it is sent back on
+    # subsequent API calls. Without this, some thinking models reject the request with a 400 error.
     extra = getattr(tool_call, "extra_content", None)
     if extra is not None:
         tc_dict["extra_content"] = _dump_if_model(extra)
@@ -1950,7 +1949,7 @@ def _iteration_summary_api_messages(agent, messages: list) -> list:
     needs_sanitize = agent._should_sanitize_tool_calls()
     sanitize_model = agent.model
     if needs_sanitize and agent.provider == "moa":
-        # MoA: agent.model is the virtual preset; use the real aggregator so Gemini keeps thought_signature.
+        # MoA: agent.model is the virtual preset; use the real aggregator so thought_signature survives.
         agg_slot = getattr(getattr(agent, "client", None), "last_aggregator_slot", None)
         sanitize_model = (agg_slot or {}).get("model") or sanitize_model
     api_messages = []
@@ -2670,9 +2669,9 @@ class _StreamingCall(StreamingWaitMonitor):
         return usage, finish_reason
 
     def _open_chat_stream(self, stream_kwargs: dict[str, Any]):
-        # Native Gemini rejects OpenAI's usage-streaming extension; so do strict endpoints that
+        # Native endpoints that reject OpenAI's usage-streaming extension; strict endpoints that
         # already 4xx'd on it this session (``_stream_options_unsupported``, see #9705).
-        if not is_native_gemini_base_url(self.agent.base_url) and not getattr(self.agent, "_stream_options_unsupported", False):
+        if not getattr(self.agent, "_stream_options_unsupported", False):
             stream_kwargs["stream_options"] = {"include_usage": True}
         request_client = self._attempt_request_client = self.clients.set_client(
             self.agent._create_request_openai_client(reason="chat_completion_stream_request", api_kwargs=stream_kwargs))

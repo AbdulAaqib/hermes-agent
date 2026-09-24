@@ -16,7 +16,7 @@ const session = (overrides: Partial<SessionInfo> = {}): SessionInfo => ({
   is_active: false,
   last_active: 1,
   message_count: 26,
-  model: 'google/gemini-3.1-pro',
+  model: 'google/claude-opus-5',
   output_tokens: 0,
   preview: '  Explore\nGmail-like density tiers for session rows.  ',
   source: 'desktop',
@@ -42,7 +42,7 @@ describe('session row details', () => {
 
   it('formats deterministic metadata without ambiguous call wording', () => {
     expect(sessionRowDetails(session({ git_branch: 'feature/menu' }), en)).toEqual({
-      metadata: 'feature/menu · gemini-3.1-pro · 26 messages · 8 tool calls',
+      metadata: 'feature/menu · claude-opus-5 · 26 messages · 8 tool calls',
       preview: 'Explore Gmail-like density tiers for session rows.'
     })
   })
@@ -79,12 +79,12 @@ describe('session row details', () => {
         }),
         en
       )
-    ).toEqual({ metadata: 'gemini-3.1-pro · 26 messages · 8 tool calls', preview: null })
+    ).toEqual({ metadata: 'claude-opus-5 · 26 messages · 8 tool calls', preview: null })
   })
 
   it('omits the preview when it already supplies the displayed title', () => {
     expect(sessionRowDetails(session({ title: null }), en)).toEqual({
-      metadata: 'gemini-3.1-pro · 26 messages · 8 tool calls',
+      metadata: 'claude-opus-5 · 26 messages · 8 tool calls',
       preview: null
     })
   })

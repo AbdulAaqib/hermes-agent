@@ -14,7 +14,6 @@ Full reference: https://hermes-agent.nousresearch.com/docs/user-guide/configurat
 | `display` | `skin`, `interface` (cli/tui), `language`, `show_reasoning`, `show_cost`, `pet` |
 | `approvals` | `mode` (smart/manual/off), `timeout`, `cron_mode` |
 | `stt` | `enabled`, `provider` (local/groq/openai/mistral/elevenlabs/deepinfra) |
-| `tts` | `provider` (edge/elevenlabs/openai/minimax/mistral/neutts/gemini/piper/kittentts/deepinfra/xai) |
 | `memory` | `memory_enabled`, `user_profile_enabled`, `provider`, `write_approval` |
 | `security` | `redact_secrets`, `tirith_enabled`, `website_blocklist` |
 | `delegation` | `model`, `provider`, `max_concurrent_children`, `max_iterations` (50), `max_spawn_depth` |
@@ -83,7 +82,6 @@ Auto-detect priority: local faster-whisper (`pip install faster-whisper`) → Gr
 | OpenAI | `VOICE_TOOLS_OPENAI_KEY` | Paid |
 | MiniMax | `MINIMAX_API_KEY` | Paid |
 | Mistral | `MISTRAL_API_KEY` | Paid |
-| Gemini | `GOOGLE_API_KEY` | Free tier |
 | NeuTTS / Piper / KittenTTS (local) | None | Free |
 
 Voice commands: `/voice on` (voice-to-voice), `/voice tts` (always voice), `/voice off`.

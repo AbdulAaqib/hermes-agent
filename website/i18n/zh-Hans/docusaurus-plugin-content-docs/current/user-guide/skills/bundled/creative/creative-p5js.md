@@ -86,7 +86,6 @@ p5.js 草图：生成艺术、着色器、交互、3D。
 
 **p5.js 1.x**（1.11.3）是默认版本——稳定、文档完善、库兼容性最广。除非项目需要 2.x 特性，否则使用此版本。
 
-**p5.js 2.x**（2.2+）新增：`async setup()` 替代 `preload()`、OKLCH/OKLAB 色彩模式、`splineVertex()`、着色器 `.modify()` API、可变字体、`textToContours()`、pointer 事件。p5.brush 需要此版本。参见 `references/core-api.md` § p5.js 2.0。
 
 ## 流水线
 
@@ -425,7 +424,6 @@ for (let p of particles) {
 // FAST: single shape with beginShape()
 beginShape(POINTS);
 for (let p of particles) {
-  vertex(p.x, p.y);
 }
 endShape();
 
@@ -528,7 +526,6 @@ function setup() {
 | 文件 | 内容 |
 |------|----------|
 | `references/core-api.md` | Canvas 设置、坐标系、绘制循环、`push()`/`pop()`、离屏缓冲区、构图模式、`pixelDensity()`、响应式设计 |
-| `references/shapes-and-geometry.md` | 2D 基元、`beginShape()`/`endShape()`、贝塞尔/Catmull-Rom 曲线、`vertex()` 系统、自定义形状、`p5.Vector`、有符号距离场、SVG 路径转换 |
 | `references/visual-effects.md` | 噪声（Perlin、分形、域扭曲、curl）、流场、粒子系统（物理、群集、轨迹）、像素操作、纹理生成（点画、排线、半调）、反馈循环、反应扩散 |
 | `references/animation.md` | 基于帧的动画、缓动函数、`lerp()`/`map()`、弹簧物理、状态机、时间轴排序、基于 `millis()` 的计时、过渡模式 |
 | `references/typography.md` | `text()`、`loadFont()`、`textToPoints()`、动态排版、文字遮罩、字体度量、响应式文字大小 |

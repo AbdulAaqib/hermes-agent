@@ -18,9 +18,6 @@ Source pages reviewed:
 - `/logout` removes saved credentials.
 
 ## Config and files
-- Settings: `~/.gemini/antigravity-cli/settings.json`
-- Keybindings: `~/.gemini/antigravity-cli/keybindings.json`
-- Plugins: `~/.gemini/antigravity-cli/plugins/<plugin_name>/`
 
 ## Useful slash commands
 - `/config`, `/settings`
@@ -59,6 +56,5 @@ Source pages reviewed:
 - Subagents can run in parallel and request approvals.
 
 ## Keybindings
-- `~/.gemini/antigravity-cli/keybindings.json`
 - Malformed JSON falls back to defaults for broken actions.
 - Docs list default bindings for clear, submit, cancel, exit, suspend, editor, approval yes/no, navigation, clipboard, undo/redo, and newline insertion.

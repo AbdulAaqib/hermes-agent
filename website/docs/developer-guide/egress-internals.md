@@ -251,7 +251,6 @@ Also update `_DEFAULT_ALLOWED_HOSTS` so the proxy allows the upstream by default
 
 ### Adding a new header-token provider (x-api-key family)
 
-If the provider authenticates with a static NON-Authorization header (like Anthropic's `x-api-key`, Azure's `api-key`, or Gemini's `x-goog-api-key`), add it to `_HEADER_AUTH_PROVIDERS` — iron-proxy's `secrets.replace.match_headers` targets arbitrary header names, so these are first-class swapped providers:
 
 ```python
 _HEADER_AUTH_PROVIDERS: Dict[str, Dict[str, Tuple[str, ...]]] = {
@@ -264,7 +263,6 @@ _HEADER_AUTH_PROVIDERS: Dict[str, Dict[str, Tuple[str, ...]]] = {
 }
 ```
 
-Use `aliases` ONLY for interchangeable env-var names of the *same* credential (e.g. `GOOGLE_API_KEY` for `GEMINI_API_KEY`) — aliased names collapse into a single mapping, because two `require: true` rules on the same host reject each other's requests. Also update `_DEFAULT_ALLOWED_HOSTS`.
 
 ### Adding a new signature-auth provider (uncovered)
 
