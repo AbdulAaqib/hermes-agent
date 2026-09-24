@@ -36,8 +36,6 @@ from tests.fakes.fake_llm_provider import FakeLLMServer, Text
 
 pytestmark = [pytest.mark.windows_only, pytest.mark.integration]
 
-KNOWN: dict[str, str] = {}  # nothing red on origin/main in this file
-
 TEXT = "Grüße, 日本語 und Emoji 😂👍🏽"
 REPLY = "Réponse ✓ 😂"
 BMP = "Grüße, 日本語"
