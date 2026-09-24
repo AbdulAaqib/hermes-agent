@@ -99,6 +99,7 @@ import { startSessionDrag } from '../chat/session-drag'
 import {
   SessionTileCloseConfirm,
   stackSessionTilesIntoMain,
+  startTileBackendIdentityGuard,
   startUnrestoredTileTitleBackfill,
   watchSessionTiles,
   WorkspaceTabMenu
@@ -467,6 +468,7 @@ watchContributedPanes()
 if (!isBrowserWindow() && !isHudWindow()) {
   watchSessionTiles()
   startUnrestoredTileTitleBackfill()
+  startTileBackendIdentityGuard()
   watchRouteTiles()
   watchPreviewTiles()
 }

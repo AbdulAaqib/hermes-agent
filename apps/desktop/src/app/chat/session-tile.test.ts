@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { $gatewayState, $sessions, setSessions } from '@/store/session'
+import { $connection, $gatewayState, $sessions, setSessions } from '@/store/session'
 import { $sessionTiles } from '@/store/session-states'
 
-import { sessionTileResumeFailure, shouldResumeSessionTile, startUnrestoredTileTitleBackfill } from './session-tile'
+import {
+  sessionTileResumeFailure,
+  shouldResumeSessionTile,
+  startTileBackendIdentityGuard,
+  startUnrestoredTileTitleBackfill,
+  unbindTilesForBackendIdentityChange,
+  WRONG_BACKEND_TILE_ERROR
+} from './session-tile'
 
 describe('shouldResumeSessionTile', () => {
   const live = {
@@ -46,6 +53,59 @@ describe('sessionTileResumeFailure', () => {
 
   it('does not overwrite a tile that rebound while the lookup was pending', () => {
     expect(sessionTileResumeFailure('session not found', true, false)).toBeUndefined()
+  })
+
+  it('unbinds onto a wrong-backend error when the active backend identity changed', () => {
+    expect(sessionTileResumeFailure('session not found', true, true, true)).toBe(
+      'Wrong backend — this session lives on another connection. Reconnect to that backend to open it.'
+    )
+    expect(sessionTileResumeFailure('404', true, true, true)).not.toMatch(/still available/i)
+  })
+})
+
+describe('unbindTilesForBackendIdentityChange', () => {
+  it('clears a runtime binding and latches the wrong-backend error when the active backend is not the tile owner', () => {
+    const tiles = unbindTilesForBackendIdentityChange(
+      [
+        { ownerRoute: { connectionId: '100-106-105-2' }, runtimeId: 'rt-ssh', storedSessionId: 'ssh-chat' },
+        { ownerRoute: { connectionId: 'local' }, runtimeId: 'rt-local', storedSessionId: 'local-chat' }
+      ],
+      { mode: 'local' }
+    )
+
+    expect(tiles[0]).toEqual({
+      error: WRONG_BACKEND_TILE_ERROR,
+      ownerRoute: { connectionId: '100-106-105-2' },
+      storedSessionId: 'ssh-chat'
+    })
+    expect(tiles[1]?.runtimeId).toBe('rt-local')
+    expect(tiles[1]?.error).toBeUndefined()
+  })
+
+  it('leaves a durable same-backend miss retryable', () => {
+    const tiles = [{ ownerRoute: { connectionId: 'local' }, storedSessionId: 'local-chat' }]
+
+    expect(unbindTilesForBackendIdentityChange(tiles, { connectionId: 'local', mode: 'local' })).toBe(tiles)
+  })
+})
+
+describe('startTileBackendIdentityGuard', () => {
+  afterEach(() => {
+    $connection.set(null)
+    $sessionTiles.set([])
+  })
+
+  it('unbinds persisted tiles when an unqualified local boot replaces their owner', () => {
+    $sessionTiles.set([
+      { ownerRoute: { connectionId: '100-106-105-2' }, runtimeId: 'rt-ssh', storedSessionId: 'ssh-chat' }
+    ])
+
+    const stop = startTileBackendIdentityGuard()
+    $connection.set({ mode: 'local' })
+
+    expect($sessionTiles.get()[0]?.error).toBe(WRONG_BACKEND_TILE_ERROR)
+    expect($sessionTiles.get()[0]?.runtimeId).toBeUndefined()
+    stop()
   })
 })
 

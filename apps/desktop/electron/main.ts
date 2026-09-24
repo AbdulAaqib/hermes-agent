@@ -188,7 +188,7 @@ import {
   resolveDesktopConnectionRequest,
   resolveDesktopWindowLaunch
 } from './desktop-profile'
-import { resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
+import { resolveDesktopRemoteRoute, registryPrimaryBootRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
@@ -10876,7 +10876,7 @@ function persistSshConnectionToken(profile, source, token, registryConnectionId 
 //   3. global remote (connection.json `mode: 'remote'`)
 // A null/empty profile resolves the env/global remote, so legacy callers and
 // the connection test (which pass no profile) are unchanged.
-async function resolveRemoteBackend(profile, options: { poolKey?: string; primary?: boolean } = {}) {
+async function resolveRemoteBackend(profile, options: { forceRegistryPrimary?: boolean; poolKey?: string; primary?: boolean } = {}) {
   const profileKey = String(profile || '').trim() || 'default'
 
   const managedPrimary = options.primary
@@ -10928,16 +10928,19 @@ async function resolveRemoteBackend(profile, options: { poolKey?: string; primar
   }
 
   const config = readDesktopConnectionConfig()
+  const registry = readDesktopConnectionsRegistry()
 
-  const route = resolveDesktopRemoteRoute({
-    config,
-    env: {
-      token: process.env.HERMES_DESKTOP_REMOTE_TOKEN,
-      url: process.env.HERMES_DESKTOP_REMOTE_URL
-    },
-    profile,
-    registry: readDesktopConnectionsRegistry()
-  })
+  const route = options.forceRegistryPrimary
+    ? registryPrimaryBootRoute(registry)
+    : resolveDesktopRemoteRoute({
+        config,
+        env: {
+          token: process.env.HERMES_DESKTOP_REMOTE_TOKEN,
+          url: process.env.HERMES_DESKTOP_REMOTE_URL
+        },
+        profile,
+        registry
+      })
 
   if (!route) {
     return null
@@ -13423,6 +13426,16 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
         attemptedRemote = managedPrimaryRestoreOwners.size > 0 || primaryBackendIsRemote()
 
         return resolveRemoteBackend(primaryProfile, { primary: true })
+      },
+      selectRegistryPrimary: async () => {
+        // The pre-update resolve can miss a registry primary (stale cache, v1
+        // mode=local winning the first read). Re-read after the update gate
+        // and select launchMode=primary before any local attach or spawn.
+        connectionRegistryCache = null
+        connectionRegistryCacheMtime = null
+        attemptedRemote = true
+
+        return resolveRemoteBackend(primaryProfile, { primary: true, forceRegistryPrimary: true })
       },
       waitForDecision: waitForFirstRunSetupChoice,
       // Mutual exclusion with an in-app update (#50238). Remote connections
