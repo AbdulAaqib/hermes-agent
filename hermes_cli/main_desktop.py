@@ -8,6 +8,7 @@ import logging
 import contextlib
 import argparse
 import hashlib
+import json
 import os
 import platform
 import re
@@ -49,6 +50,63 @@ def _desktop_stamp_path() -> Path:
     return get_hermes_home() / "desktop-build-stamp.json"
 
 
+def _desktop_resources_dir(executable: Path) -> Path:
+    """Resources dir of a packaged app.
+
+    A Mac bundle is ``…/Hermes.app/Contents/MacOS/Hermes`` → ``…/Contents/Resources``.
+    Every other electron-builder layout keeps ``resources`` next to the executable.
+    Layout, not ``sys.platform``, so a Windows tree checked on another host still
+    resolves the ``app.asar`` it actually shipped.
+    """
+    if executable.parent.name == "MacOS":
+        return executable.parent.parent / "Resources"
+    return executable.parent / "resources"
+
+
+def _desktop_artifact_id(desktop_dir: Path) -> Optional[str]:
+    """Identity of the packaged ``app.asar``: ``mtime_ns:size``, or ``None``.
+
+    ``apps/desktop/release/`` is git-ignored, so the source content hash cannot
+    see this file. The stamp has to record the identity or a current hash can
+    sit on a weeks-old package.
+    """
+    executable = _desktop_packaged_executable(desktop_dir)
+    if executable is None:
+        return None
+    try:
+        stat_result = (_desktop_resources_dir(executable) / "app.asar").stat()
+    except OSError:
+        return None
+    return f"{stat_result.st_mtime_ns}:{stat_result.st_size}"
+
+
+def _desktop_stamp_artifact() -> Optional[str]:
+    """Artifact id recorded in the desktop build stamp, or ``None``."""
+    try:
+        data = json.loads(_desktop_stamp_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    artifact = data.get("artifact")
+    return artifact if isinstance(artifact, str) and artifact else None
+
+
+def _desktop_artifact_check_applies(desktop_dir: Path) -> bool:
+    """True when a packaged tree is present to bind the stamp to.
+
+    A resources directory, or a real electron-builder executable whose resources
+    dir was deleted, is a package. A synthetic exe path in a unit fixture is not.
+    """
+    executable = _desktop_packaged_executable(desktop_dir)
+    if executable is None:
+        return False
+    if _desktop_resources_dir(executable).is_dir():
+        return True
+    parent = executable.parent.name
+    return parent == "MacOS" or parent.endswith("-unpacked")
+
+
 def _renderer_bundle_dir(desktop_dir: Path, *, source_mode: bool) -> Optional[Path]:
     """The renderer ``dist`` a launch loads: ``apps/desktop/dist`` in source mode, else the
     ``app.asar.unpacked/dist`` copy (the only real directory, and the one an interrupted replace tears)."""
@@ -59,11 +117,8 @@ def _renderer_bundle_dir(desktop_dir: Path, *, source_mode: bool) -> Optional[Pa
     if executable is None:
         return None
 
-    # macOS: …/Hermes.app/Contents/MacOS/Hermes → …/Contents/Resources
-    resources = (
-        executable.parent.parent / "Resources" if sys.platform == "darwin" else executable.parent / "resources"
-    )
-    return resources / "app.asar.unpacked" / "dist"
+    # macOS bundle: …/Hermes.app/Contents/MacOS/Hermes → …/Contents/Resources
+    return _desktop_resources_dir(executable) / "app.asar.unpacked" / "dist"
 
 
 # The module files the renderer fetches before any app code runs: Vite emits
@@ -133,16 +188,42 @@ def _desktop_build_needed(desktop_dir: Path, project_root: Path, *, source_mode:
         print("  ⚠ The packaged desktop app has no node-pty native binary; rebuilding it")
         return True
 
-    return not _stamp_is_current(
+    if not _stamp_is_current(
         _desktop_stamp_path(), lambda: _compute_desktop_content_hash(project_root), sourceMode=source_mode
-    )
+    ):
+        return True
+
+    # A matching source stamp is not proof the packaged UI is that build:
+    # release/ is git-ignored, so the hash never sees app.asar. A stamp can be
+    # current while the packed artifact is weeks old, replaced, or missing.
+    if not source_mode and _desktop_artifact_check_applies(desktop_dir):
+        live_artifact = _desktop_artifact_id(desktop_dir)
+        if live_artifact is None or live_artifact != _desktop_stamp_artifact():
+            print(
+                "  ⚠ The packaged desktop app is not the last recorded build "
+                "(stale or missing app.asar); rebuilding it"
+            )
+            return True
+
+    return False
 
 
 def _write_desktop_build_stamp(project_root: Path, *, source_mode: bool) -> None:
-    """Write the desktop build stamp after a successful build."""
+    """Write the desktop build stamp after a successful build.
+
+    Packaged builds also record the ``app.asar`` identity. The content hash only
+    proves which source was built, not that the packaged UI still is that build.
+    """
+    extra = {}
+    if not source_mode:
+        desktop_dir = project_root / "apps" / "desktop"
+        if _desktop_artifact_check_applies(desktop_dir):
+            artifact = _desktop_artifact_id(desktop_dir)
+            if artifact is not None:
+                extra["artifact"] = artifact
     _write_build_stamp(
         _desktop_stamp_path(), "desktop",
-        lambda: _compute_desktop_content_hash(project_root), sourceMode=source_mode)
+        lambda: _compute_desktop_content_hash(project_root), sourceMode=source_mode, **extra)
 
 
 def _desktop_packaged_executable(desktop_dir: Path) -> Optional[Path]:

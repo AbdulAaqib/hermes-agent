@@ -1096,8 +1096,14 @@ def _rebuild_desktop_after_update(
         had_desktop_app_before_update
         or _desktop_app_present(desktop_dir)
         or _m()._desktop_stamp_path().is_file())
-    if not (
-        (desktop_dir / "package.json").exists() and _m()._resolve_node_runtime_npm() and has_desktop_app):
+    if not ((desktop_dir / "package.json").exists() and has_desktop_app):
+        return True
+    if not _m()._resolve_node_runtime_npm():
+        # An installed Desktop app that we cannot rebuild must not look like
+        # "nothing to do". That silence is how a stale packaged UI rode along
+        # with "✓ Update complete!".
+        print("  ⚠ A Desktop app is installed but no usable Node.js/npm was found to rebuild it;")
+        print("    the packaged UI may be stale. Fix Node, then run: hermes desktop --build-only")
         return True
 
     print("→ Checking if desktop app needs rebuilding...")
