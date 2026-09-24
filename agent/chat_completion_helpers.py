@@ -1491,6 +1491,29 @@ def _assistant_tool_call_dict(agent, tool_call, index: int) -> dict:
     return tc_dict
 
 
+def _subtract_reasoning_from_content(content: Optional[str], reasoning_text: Optional[str]) -> Optional[str]:
+    """Deterministic leak guard: when a provider duplicates its reasoning channel
+    into ``content``, subtract the captured reasoning so chain-of-thought never
+    reaches the user. Only an exact leading match (or an exact whole-string
+    match) of the captured reasoning is stripped — never heuristic prose
+    trimming, so a genuine reply that merely resembles reasoning is untouched.
+    """
+    if not content or not reasoning_text:
+        return content
+    c = content.strip()
+    r = reasoning_text.strip()
+    if not r or r not in c:
+        return content
+    if c == r:
+        return ""
+    if c.startswith(r):
+        return c[len(r):].lstrip()
+    for sep in ("\n\n", "\n---\n", "\n"):
+        if c.startswith(r + sep):
+            return c[len(r) + len(sep):].lstrip()
+    return content
+
+
 def build_assistant_message(agent, assistant_message, finish_reason: str) -> dict:
     """Build a normalized assistant message dict (reasoning, reasoning_details,
     optional tool_calls) shared by the tool-call and final-response paths.
@@ -1499,8 +1522,13 @@ def build_assistant_message(agent, assistant_message, finish_reason: str) -> dic
     survive ``_rows_to_conversation``."""
     assistant_tool_calls = getattr(assistant_message, "tool_calls", None)
     reasoning_text = _assistant_reasoning_text(agent, assistant_message)
+    _content = _assistant_content_for_storage(agent, assistant_message)
+    # Defense-in-depth: a provider that merges its reasoning channel into
+    # ``content`` would replay CoT to the user. Subtract the captured reasoning
+    # (exact match only) before the message is stored or delivered.
+    _content = _subtract_reasoning_from_content(_content, reasoning_text)
     msg = stamp_message_timestamp({"role": "assistant",
-        "content": _assistant_content_for_storage(agent, assistant_message), "reasoning": reasoning_text,
+        "content": _content, "reasoning": reasoning_text,
         "finish_reason": finish_reason})
 
     raw_reasoning_content = getattr(assistant_message, "reasoning_content", None)

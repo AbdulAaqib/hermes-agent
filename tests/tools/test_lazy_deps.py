@@ -258,14 +258,6 @@ class TestIsSatisfiedVersionAware:
                     "pyasn1==0.6.4",
                 ),
             ),
-            (
-                "provider.vertex",
-                {
-                    "google-auth": "2.55.1",
-                    "pyasn1": "0.6.3",
-                },
-                ("pyasn1==0.6.4",),
-            ),
         ],
     )
     def test_google_features_repair_stale_transitives(

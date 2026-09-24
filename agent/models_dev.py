@@ -121,7 +121,7 @@ PROVIDER_TO_MODELS_DEV: Dict[str, str] = {
     # its *-contributor-free SKUs; without this alias every opencode-free lookup missed models.dev.
     "opencode-free": "opencode",
     "kilocode": "kilo", "fireworks": "fireworks-ai",
-    "huggingface": "huggingface",
+    "huggingface": "huggingface", "google": "google",
     "xai": "xai",
     "xai-oauth": "xai",  # OAuth is a transport path for the same xAI catalog
     "xiaomi": "xiaomi", "nvidia": "nvidia",

@@ -202,16 +202,6 @@ def test_wan_30_audio_toggle_uses_family_key_and_start_image_url():
     assert _build_payload(FAL_FAMILIES["veo3.1"], image_url=None, **kw)["generate_audio"] is True
 
 
-def test_gemini_omni_flash_v11_is_dual_modality():
-    """v1.1 (Aug 2026) added a text-to-video endpoint; both modalities
-    must route to the versioned v1.1 endpoints."""
-    from plugins.video_gen.fal import FAL_FAMILIES
-
-    meta = FAL_FAMILIES["gemini-omni-flash"]
-    assert meta["text_endpoint"] == "google/gemini-omni-flash/v1.1/text-to-video"
-    assert meta["image_endpoint"] == "google/gemini-omni-flash/v1.1/image-to-video"
-
-
 def test_text_only_job_errors_cleanly_for_i2v_only_family(monkeypatch):
     """Catalog-shape guard: a family without a text endpoint must error cleanly
     instead of submitting to a None endpoint. Every cataloged family is now
@@ -367,7 +357,6 @@ class TestFamilyKeyNormalization:
         assert _normalize_family_key("bytedance/seedance-2.0") == "seedance-2.0"
         assert _normalize_family_key("minimax/h3") == "minimax-h3"
         assert _normalize_family_key("xai/grok-imagine-video/v1.5") == "grok-imagine-1.5"
-        assert _normalize_family_key("google/gemini-omni-flash") == "gemini-omni-flash"
         assert _normalize_family_key("blackforestlabs/flux-3") == "flux-3"
 
     def test_capabilities_span_longest_family_duration(self):
@@ -454,7 +443,6 @@ class TestPayloadBuilder:
             "minimax-h3",
             "flux-3",
             "grok-imagine-1.5",
-            "gemini-omni-flash",
         ],
     )
     def test_seed_dropped_for_families_without_seed_support(self, family_id):
@@ -498,7 +486,7 @@ class TestPayloadBuilder:
         """minimax-h3 and the i2v-only families have no generate_audio field."""
         from plugins.video_gen.fal import FAL_FAMILIES, _build_payload
 
-        for family_id in ("minimax-h3", "grok-imagine-1.5", "gemini-omni-flash"):
+        for family_id in ("minimax-h3", "grok-imagine-1.5"):
             p = _build_payload(
                 FAL_FAMILIES[family_id],
                 prompt="x", image_url="https://i.png", duration=None,
@@ -514,7 +502,6 @@ class TestPayloadBuilder:
             ("minimax-h3", 7),          # FAL types duration as an integer
             ("flux-3", 7),              # mixed ["auto", 5, 6, ...] literal enum
             ("grok-imagine-1.5", 7),
-            ("gemini-omni-flash", 7),
             ("seedance-2.5", "7"),      # FAL enum is strings: "auto","4",...
             ("seedance-2.0-mini", "7"),
             ("pixverse-v6", "7"),       # unchanged legacy string form

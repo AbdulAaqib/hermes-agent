@@ -84,7 +84,7 @@ class TestRegistration:
 
     @pytest.mark.parametrize(
         "builtin",
-        ["edge", "openai", "elevenlabs", "minimax", "gemini",
+        ["edge", "openai", "elevenlabs", "minimax",
          "mistral", "xai", "piper", "kittentts", "neutts"],
     )
     def test_rejects_builtin_shadow_with_warning(self, builtin, caplog):

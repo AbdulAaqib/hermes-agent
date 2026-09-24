@@ -821,7 +821,7 @@ class TestGetModelCapabilities:
             }},
         }
         with patch("agent.models_dev.fetch_models_dev", return_value=registry):
-            caps = get_model_capabilities("gemini", "weird-model")
+            caps = get_model_capabilities("google", "weird-model")
         assert caps is not None
         assert caps.supports_vision is False
 

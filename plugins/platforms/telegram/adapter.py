@@ -506,6 +506,9 @@ class TelegramAdapter(BasePlatformAdapter):
         self._send_path_degraded: bool = False
         self._general_request_drain_lock = asyncio.Lock()
         self._dm_topics: Dict[str, int] = {}  # topic_name -> message_thread_id
+        # Chats whose Topics mode is off: remembered so we stop attempting (and
+        # warning about) topic creation and just deliver to the main DM.
+        self._dm_topics_unavailable: set[int] = set()
         self._forum_command_registered: set[int] = set()  # forum chats with commands registered
         self._forum_lock = asyncio.Lock()
         # Status indicator: bot short description "Online"/"Offline" on connect/clean disconnect. Off by
@@ -2404,11 +2407,16 @@ class TelegramAdapter(BasePlatformAdapter):
                 logger.info(
                     "[%s] DM topic '%s' already exists in chat %s (will be mapped from incoming messages)", self.name, name, chat_id)
             elif "not a forum" in error_text or "forums_disabled" in error_text:
-                logger.warning(
-                    "[%s] Cannot create DM topic '%s' in chat %s: Topics mode is not enabled. "
-                    "The user must open the DM with this bot in Telegram, tap the bot name "
-                    "at the top, and enable 'Topics' in chat settings before topics can be created.",
-                    self.name, name, chat_id)
+                # Topics mode is off for this DM. Remember it so every later
+                # cron delivery doesn't re-attempt and re-log; the caller falls
+                # back to the main chat. One info line, not a per-delivery warning.
+                if chat_id not in self._dm_topics_unavailable:
+                    self._dm_topics_unavailable.add(chat_id)
+                    logger.info(
+                        "[%s] DM topics unavailable in chat %s (Topics mode off); "
+                        "delivering cron/topic messages to the main chat. Enable Topics in the "
+                        "DM's chat settings to use per-job threads.",
+                        self.name, chat_id)
             else:
                 logger.warning(
                     "[%s] Failed to create DM topic '%s' in chat %s: %s", self.name, name, chat_id, _redact_telegram_error_text(e))
@@ -2432,6 +2440,8 @@ class TelegramAdapter(BasePlatformAdapter):
             chat_id_int = int(chat_id)
         except (TypeError, ValueError):
             return None
+        if not force_create and chat_id_int in self._dm_topics_unavailable:
+            return None  # Topics mode is off — deliver to the main chat
         cache_key = f"{chat_id_int}:{name}"
         cached = self._dm_topics.get(cache_key)
         if cached and not force_create:

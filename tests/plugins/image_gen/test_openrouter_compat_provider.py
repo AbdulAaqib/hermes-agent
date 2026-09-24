@@ -124,8 +124,8 @@ class TestProviderClass:
     def test_explicit_model_kwarg_wins_over_config(self):
         cfg = {"model": "openai/gpt-image-2"}
         with patch("plugins.image_gen.openrouter._load_image_gen_config", return_value=cfg):
-            assert _openrouter()._resolve_model_chain("google/gemini-3-pro-image") == [
-                "google/gemini-3-pro-image"
+            assert _openrouter()._resolve_model_chain("openai/gpt-image-2") == [
+                "openai/gpt-image-2"
             ]
 
 
@@ -226,7 +226,7 @@ class TestLiveCatalog:
                     {"id": "openai/gpt-5.4-image-2",
                      "architecture": {"output_modalities": ["image"],
                                       "input_modalities": ["text", "image"]}},
-                    {"id": "google/gemini-3-pro-image",
+                    {"id": "microsoft/mai-image-2.5",
                      "architecture": {"output_modalities": ["image"],
                                       "input_modalities": ["text", "image"]}},
                 ]}
@@ -236,7 +236,7 @@ class TestLiveCatalog:
             ids = [m["id"] for m in orp.list_models()]
         assert ids[0] == "openai/gpt-5.4-image-2"          # default first
         assert "bytedance-seed/seedream-4.5" in ids        # Image-API-only model present
-        assert "google/gemini-3-pro-image" in ids          # chat-catalog model present
+        assert "microsoft/mai-image-2.5" in ids          # chat-catalog model present
         assert len(ids) == len(set(ids))                   # deduped
 
     def test_nous_portal_picker_excludes_image_api_catalog(self):
@@ -592,8 +592,8 @@ class TestImageApiSurface:
     def test_aspect_ratio_is_mapped_per_model(self):
         from plugins.image_gen.openrouter import _build_image_api_payload
 
-        gemini, _ = _build_image_api_payload(
-            model_id="google/gemini-3.1-flash-lite-image", prompt="p",
+        mai, _ = _build_image_api_payload(
+            model_id="microsoft/mai-image-2.5", prompt="p",
             semantic_aspect="landscape", references=[], config_key="openrouter", kwargs={},
         )
         mini, _ = _build_image_api_payload(
@@ -601,7 +601,7 @@ class TestImageApiSurface:
             semantic_aspect="landscape", references=[], config_key="openrouter", kwargs={},
         )
         # gpt-image-1-mini has no 16:9 at all, so landscape degrades to 3:2.
-        assert gemini["aspect_ratio"] == "16:9"
+        assert mai["aspect_ratio"] == "16:9"
         assert mini["aspect_ratio"] == "3:2"
 
     def test_unsupported_parameter_is_dropped_and_explained(self):

@@ -26,10 +26,10 @@ from plugins.image_gen._common import error_factory, load_image_gen_config, post
 
 logger = logging.getLogger(__name__)
 
-# Quality-first default chain: OpenAI first, MAI-Image-2.5 when it is gated /
+# Quality-first default chain: OpenAI first, GPT Image 1 when it is gated /
 # unavailable / times out. Any explicit override is exact — no auto fallback.
 DEFAULT_MODEL = "openai/gpt-5.4-image-2"
-_FALLBACK_MODEL = "microsoft/mai-image-2.5"
+_FALLBACK_MODEL = "openai/gpt-image-1"
 _DEFAULT_MODEL_CHAIN = (DEFAULT_MODEL, _FALLBACK_MODEL)
 _MODEL_PRIORITY = {DEFAULT_MODEL: 0, _FALLBACK_MODEL: 1}
 
@@ -45,7 +45,7 @@ _KNOWN_MODEL_META = {
         "strengths": "Highest fidelity; best prompt adherence; slower on OpenRouter",
     },
     _FALLBACK_MODEL: {
-        "display": "Microsoft MAI-Image-2.5",
+        "display": "OpenAI GPT Image 1",
         "strengths": "Fast, reliable fallback with good layout adherence",
     },
 }

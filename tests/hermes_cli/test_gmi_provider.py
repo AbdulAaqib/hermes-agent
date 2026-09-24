@@ -243,7 +243,7 @@ class TestGmiAuxiliary:
             client, model = resolve_provider_client("gmi")
 
         assert client is not None
-        assert model == "google/gemini-3.1-flash-lite-preview"
+        assert model == "openai/gpt-5.4-mini"
         assert mock_openai.call_args.kwargs["api_key"] == "gmi-test-key"
         assert mock_openai.call_args.kwargs["base_url"] == "https://api.gmi-serving.com/v1"
         # GMI profile declares default_headers with a HermesAgent User-Agent

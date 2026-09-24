@@ -73,7 +73,6 @@ class TestCommandCodeProfileIdentity:
         assert "deepseek" in names
         assert "Qwen" in names
         assert "Kimi" in names
-        assert "gemini" in names
 
     def test_default_aux_model(self, commandcode_profile):
         assert commandcode_profile.default_aux_model == "deepseek/deepseek-v4-flash"
