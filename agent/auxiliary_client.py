@@ -772,7 +772,7 @@ _API_KEY_PROVIDER_AUX_MODELS_FALLBACK: Dict[str, str] = {
     "zai": "glm-4.5-flash", "kimi-coding": "kimi-k2-turbo-preview",
     "stepfun": "step-3.5-flash", "kimi-coding-cn": "kimi-k2-turbo-preview",
     "gmi": "openai/gpt-5.4-mini", "anthropic": "claude-haiku-4-5-20251001",
-    "ai-gateway": "openai/gpt-5.4-mini", "opencode-zen": "openai/gpt-5.4-mini", "opencode-go": "glm-5",
+    "ai-gateway": "openai/gpt-5.4-mini", "opencode-zen": "openai/gpt-5.4-mini", "opencode-go": "deepseek-v4.1-flash",
     "kilocode": "openai/gpt-5.4-mini", "ollama-cloud": "nemotron-3-nano:30b",
     "tencent-tokenhub": "hy4-preview", "tencent-tokenplan": "hy4-preview",
     # No "deepinfra": its aux model lives on the ProviderProfile (read first).
