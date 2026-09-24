@@ -6,8 +6,10 @@ import { $voicePlayback } from '@/store/voice-playback'
 import { useVoiceConversation } from './use-voice-conversation'
 
 const mocks = vi.hoisted(() => {
+  let deferFallbackPlayback = false
   let deferStreamStart = false
   let onSilence: null | (() => void) = null
+  let resolveFallbackPlayback: null | ((played: boolean) => void) = null
   let resolveStreamStart: null | (() => void) = null
   let resolveSpeech: null | ((outcome: 'done' | 'fallback') => void) = null
   let streamAvailable = true
@@ -19,6 +21,12 @@ const mocks = vi.hoisted(() => {
 
   const playSpeechText = vi.fn(() => {
     stopVoicePlayback()
+
+    if (deferFallbackPlayback) {
+      return new Promise<boolean>(resolve => {
+        resolveFallbackPlayback = resolve
+      })
+    }
 
     return Promise.resolve(true)
   })
@@ -39,8 +47,15 @@ const mocks = vi.hoisted(() => {
       resolveStreamStart?.()
       resolveStreamStart = null
     },
+    deferFallbackPlayback() {
+      deferFallbackPlayback = true
+    },
     deferStreamStart() {
       deferStreamStart = true
+    },
+    finishFallbackPlayback() {
+      resolveFallbackPlayback?.(true)
+      resolveFallbackPlayback = null
     },
     finishSpeech(outcome: 'done' | 'fallback') {
       resolveSpeech?.(outcome)
@@ -48,7 +63,9 @@ const mocks = vi.hoisted(() => {
     handle,
     playSpeechText,
     resetSpeechMocks() {
+      deferFallbackPlayback = false
       deferStreamStart = false
+      resolveFallbackPlayback = null
       resolveStreamStart = null
       resolveSpeech = null
       streamAvailable = true
@@ -144,6 +161,36 @@ function renderRearmConversation(responseId: string, responseText: string) {
       }),
     { initialProps: { enabled: false } }
   )
+}
+
+function renderIncrementalFallbackConversation() {
+  let response: null | { id: string; pending: boolean; text: string } = null
+
+  const hook = renderHook(
+    ({ enabled }) =>
+      useVoiceConversation({
+        busy: false,
+        consumePendingResponse: vi.fn(),
+        enabled,
+        onSubmit: async () => {
+          response = { id: 'reply-edge', pending: true, text: 'The first sentence is ready. ' }
+        },
+        onTranscribeAudio: async () => 'Hello',
+        pendingResponse: () => response
+      }),
+    { initialProps: { enabled: false } }
+  )
+
+  return {
+    finishResponse() {
+      response = {
+        id: 'reply-edge',
+        pending: false,
+        text: 'The first sentence is ready. The second sentence is ready.'
+      }
+    },
+    hook
+  }
 }
 
 async function beginReply(hook: ReturnType<typeof renderRearmConversation>) {
@@ -254,5 +301,97 @@ describe('useVoiceConversation playback rearm', () => {
     )
     await waitFor(() => expect(mocks.handle.start).toHaveBeenCalledTimes(2))
     expect(hook.result.current.status).toBe('listening')
+  })
+
+  it('speaks completed fallback sentences before generation ends and logs why', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { finishResponse, hook } = renderIncrementalFallbackConversation()
+
+    await beginReply(hook)
+    await waitFor(() => expect(mocks.startSpeechStream).toHaveBeenCalled())
+
+    await act(async () => {
+      mocks.finishSpeech('fallback')
+    })
+
+    await waitFor(() =>
+      expect(mocks.playSpeechText).toHaveBeenCalledWith('The first sentence is ready.', {
+        source: 'voice-conversation'
+      })
+    )
+    expect(mocks.handle.start).toHaveBeenCalledTimes(1)
+    expect(info).toHaveBeenCalledWith(
+      '[voice-fallback]',
+      expect.objectContaining({
+        at: expect.any(Number),
+        reason: 'speak-stream returned fallback before any audio',
+        responseId: 'reply-edge'
+      })
+    )
+    expect(info).toHaveBeenCalledWith(
+      '[voice-fallback]',
+      expect.objectContaining({
+        elapsedMs: expect.any(Number),
+        event: 'first-sentence',
+        reason: 'speak-stream returned fallback before any audio',
+        responseId: 'reply-edge'
+      })
+    )
+
+    finishResponse()
+
+    await waitFor(() =>
+      expect(mocks.playSpeechText).toHaveBeenCalledWith('The second sentence is ready.', {
+        source: 'voice-conversation'
+      })
+    )
+    await waitFor(() => expect(mocks.handle.start).toHaveBeenCalledTimes(2))
+    expect(hook.result.current.status).toBe('listening')
+    info.mockRestore()
+  })
+
+  it('does not drain the queued fallback sentence after Stop during playback', async () => {
+    mocks.deferFallbackPlayback()
+    const { finishResponse, hook } = renderIncrementalFallbackConversation()
+
+    await beginReply(hook)
+    await waitFor(() => expect(mocks.startSpeechStream).toHaveBeenCalled())
+
+    await act(async () => {
+      mocks.finishSpeech('fallback')
+    })
+    await waitFor(() => expect(mocks.playSpeechText).toHaveBeenCalledTimes(1))
+    finishResponse()
+
+    mocks.stopVoicePlayback()
+    await act(async () => {
+      mocks.finishFallbackPlayback()
+    })
+
+    await waitFor(() => expect(hook.result.current.status).toBe('idle'))
+    expect(mocks.playSpeechText).toHaveBeenCalledTimes(1)
+    expect(mocks.playSpeechText).not.toHaveBeenCalledWith('The second sentence is ready.', {
+      source: 'voice-conversation'
+    })
+    expect(mocks.handle.start).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not drain a later fallback sentence when Stop lands in the gap', async () => {
+    const { finishResponse, hook } = renderIncrementalFallbackConversation()
+
+    await beginReply(hook)
+    await waitFor(() => expect(mocks.startSpeechStream).toHaveBeenCalled())
+
+    await act(async () => {
+      mocks.finishSpeech('fallback')
+    })
+    await waitFor(() => expect(mocks.playSpeechText).toHaveBeenCalledTimes(1))
+
+    mocks.stopVoicePlayback()
+    await waitFor(() => expect(hook.result.current.status).toBe('idle'))
+    finishResponse()
+
+    expect(mocks.playSpeechText).toHaveBeenCalledTimes(1)
+    expect(mocks.handle.start).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { sanitizeTextForSpeech } from '@/lib/speech-text'
 import { startThinkingSound, stopThinkingSound } from '@/lib/thinking-sound'
 import { monitorSpeechDuringPlayback } from '@/lib/voice-barge-in'
+import { cutSentences } from '@/lib/voice-client-direct'
 import {
   markVoicePlaybackInterrupted,
   playSpeechText,
@@ -47,6 +49,9 @@ interface VoiceConversationOptions {
 /** How long a barge-triggered interrupt may take to settle before we submit
  *  the captured utterance anyway. */
 const INTERRUPT_SETTLE_TIMEOUT_MS = 5_000
+const FALLBACK_SENTENCE_POLL_MS = 150
+const SPEAK_STREAM_FALLBACK_REASON = 'speak-stream returned fallback before any audio'
+const SPEAK_STREAM_UNAVAILABLE_REASON = 'speak-stream unavailable'
 
 export function useVoiceConversation({
   busy,
@@ -449,46 +454,175 @@ export function useVoiceConversation({
     [pendingResponse]
   )
 
-  /** Whole-text fallback: wait for the reply to complete, then speak it. */
+  /**
+   * Non-streaming fallback: speak each completed sentence as it lands.
+   * Stop drops the queue; it must not keep synthesizing the remainder.
+   */
   const awaitFallbackSpeech = useCallback(
-    (responseId: string) => {
+    (responseId: string, reason: string) => {
+      const startedAt = Date.now()
+      let buffer = ''
+      let sourceLength = 0
+      let responseFinished = false
+      let playing = false
+      let settled = false
+      let loggedFirstSentence = false
+      let flushedSeal = false
+      let pollTimer: number | null = null
+      let ownedSequence = $voicePlayback.get().sequence
+      const speechQueue: string[] = []
+
+      console.info('[voice-fallback]', { at: startedAt, reason, responseId })
+
+      const finishFallback = (barged: boolean, stopped = false) => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+
+        if (stopped) {
+          speechQueue.length = 0
+        }
+
+        if (pollTimer !== null) {
+          window.clearTimeout(pollTimer)
+          pollTimer = null
+        }
+
+        awaitingSpokenResponseRef.current = false
+        settleAfterSpeech(barged, stopped)
+      }
+
+      const enqueue = (sentences: string[]) => {
+        for (const sentence of sentences) {
+          const speakable = sanitizeTextForSpeech(sentence)
+
+          if (speakable) {
+            speechQueue.push(speakable)
+          }
+        }
+      }
+
+      const playNext = () => {
+        if (settled || playing || responseIdRef.current !== responseId) {
+          return
+        }
+
+        // An external Stop advances the playback sequence. Drop whatever is
+        // queued — draining it would keep speaking after the user stopped.
+        if ($voicePlayback.get().sequence > ownedSequence) {
+          finishFallback(false, true)
+
+          return
+        }
+
+        const sentence = speechQueue.shift()
+
+        if (!sentence) {
+          if (responseFinished) {
+            finishFallback(bargedRef.current)
+          }
+
+          return
+        }
+
+        ensureBargeMonitor()
+        playing = true
+
+        if (!loggedFirstSentence) {
+          loggedFirstSentence = true
+          console.info('[voice-fallback]', {
+            elapsedMs: Date.now() - startedAt,
+            event: 'first-sentence',
+            reason,
+            responseId
+          })
+        }
+
+        const playback = playSpeechText(sentence, { ...ownerRef.current, source: 'voice-conversation' })
+        // playSpeechText bumps the sequence synchronously before returning.
+        // Capture that baseline so only a later, external Stop is a stop.
+        const sentenceStartSequence = $voicePlayback.get().sequence
+        ownedSequence = sentenceStartSequence
+        speechStartSequenceRef.current = sentenceStartSequence
+        let playbackFailed = false
+
+        void playback
+          .catch(error => {
+            playbackFailed = true
+            notifyError(error, voiceCopy.playbackFailed)
+          })
+          .finally(() => {
+            if (settled || responseIdRef.current !== responseId) {
+              return
+            }
+
+            playing = false
+
+            if (playbackFailed) {
+              finishFallback(bargedRef.current)
+
+              return
+            }
+
+            const stopped = $voicePlayback.get().sequence > sentenceStartSequence
+
+            if (bargedRef.current || stopped) {
+              finishFallback(bargedRef.current, stopped && !bargedRef.current)
+
+              return
+            }
+
+            playNext()
+          })
+      }
+
       const poll = () => {
-        if (responseIdRef.current !== responseId) {
+        if (settled || responseIdRef.current !== responseId) {
+          if (pollTimer !== null) {
+            window.clearTimeout(pollTimer)
+            pollTimer = null
+          }
+
           return
         }
 
         const response = pendingResponse()
 
         if (!response || response.id !== responseId) {
-          settleAfterSpeech(false)
+          finishFallback(false)
 
           return
         }
 
-        if (response.pending || busyRef.current) {
-          window.setTimeout(poll, 250)
-
-          return
+        if (response.text.length > sourceLength) {
+          buffer += response.text.slice(sourceLength)
+          sourceLength = response.text.length
+          flushedSeal = false
+          const cut = cutSentences(buffer, false)
+          buffer = cut.rest
+          enqueue(cut.sentences)
         }
 
-        // The full-duplex monitor is normally already live (armed at submit);
-        // this is a safety net for read-aloud-style entries into the loop.
-        ensureBargeMonitor()
+        // A sealed bubble is a committed boundary even while a tool still runs.
+        // Speak its tail now, but keep polling if the turn is not done.
+        if (!response.pending && !flushedSeal) {
+          flushedSeal = true
+          const cut = cutSentences(buffer, true)
+          buffer = cut.rest
+          enqueue(cut.sentences)
+        }
 
-        const playback = playSpeechText(response.text, { ...ownerRef.current, source: 'voice-conversation' })
-        // playSpeechText performs its normal cleanup synchronously before
-        // returning. Capture the sequence after that internal increment so
-        // only a later, external stop suppresses the next listen cycle.
-        speechStartSequenceRef.current = $voicePlayback.get().sequence
+        if (!response.pending && !busyRef.current) {
+          responseFinished = true
+        }
 
-        void playback
-          .catch(error => notifyError(error, voiceCopy.playbackFailed))
-          .finally(() => {
-            if (responseIdRef.current === responseId) {
-              awaitingSpokenResponseRef.current = false
-              settleAfterSpeech(bargedRef.current)
-            }
-          })
+        playNext()
+
+        if (!responseFinished) {
+          pollTimer = window.setTimeout(poll, FALLBACK_SENTENCE_POLL_MS)
+        }
       }
 
       poll()
@@ -538,9 +672,10 @@ export function useVoiceConversation({
             return
           }
 
-          // No streaming backend/provider: speak the whole reply once it lands.
+          // No streaming backend/provider: queue sentences on sync TTS instead of
+          // waiting for the whole reply.
           speechSessionRef.current = null
-          awaitFallbackSpeech(responseId)
+          awaitFallbackSpeech(responseId, SPEAK_STREAM_UNAVAILABLE_REASON)
 
           return
         }
@@ -576,7 +711,7 @@ export function useVoiceConversation({
         }
 
         if (outcome === 'fallback') {
-          awaitFallbackSpeech(responseId)
+          awaitFallbackSpeech(responseId, SPEAK_STREAM_FALLBACK_REASON)
 
           return
         }
