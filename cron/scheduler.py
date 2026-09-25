@@ -3235,51 +3235,60 @@ def _launch_external_cron_worker(job: dict) -> bool:
     deadline = time.monotonic() + HANDOFF_ADOPTION_GRACE_SECONDS
     while time.monotonic() < deadline:
         if ack_path.exists():
+            # The worker creates the acknowledgement file before writing it
+            # (os.open(O_CREAT) then json.dump+fsync). A read inside that window
+            # sees an empty file — a benign race, not an unreadable
+            # acknowledgement. Keep polling until the write lands.
             try:
-                acknowledgement = json.loads(ack_path.read_text(encoding="utf-8"))
-            except Exception:
-                logger.exception(
-                    "Cron external worker %s published an unreadable acknowledgement; "
-                    "treating handoff as ownership-uncertain",
-                    execution_id,
-                )
-                return _wait_for_external_cron_worker(
-                    process,
-                    execution_id=execution_id,
-                    job_id=job_id,
-                    handoff_files=(payload_path,),
-                )
-            finally:
+                raw = ack_path.read_text(encoding="utf-8")
+            except OSError:
+                raw = ""
+            if raw.strip():
+                try:
+                    acknowledgement = json.loads(raw)
+                except Exception:
+                    logger.exception(
+                        "Cron external worker %s published an unreadable acknowledgement; "
+                        "treating handoff as ownership-uncertain",
+                        execution_id,
+                    )
+                    ack_path.unlink(missing_ok=True)
+                    return _wait_for_external_cron_worker(
+                        process,
+                        execution_id=execution_id,
+                        job_id=job_id,
+                        handoff_files=(payload_path,),
+                    )
                 ack_path.unlink(missing_ok=True)
-            if (
-                not isinstance(acknowledgement, dict)
-                or acknowledgement.get("execution_id") != execution_id
-            ):
-                logger.error(
-                    "Cron external worker acknowledgement mismatch for %s; "
-                    "treating handoff as ownership-uncertain",
+                if (
+                    not isinstance(acknowledgement, dict)
+                    or acknowledgement.get("execution_id") != execution_id
+                ):
+                    logger.error(
+                        "Cron external worker acknowledgement mismatch for %s; "
+                        "treating handoff as ownership-uncertain",
+                        execution_id,
+                    )
+                    return _wait_for_external_cron_worker(
+                        process,
+                        execution_id=execution_id,
+                        job_id=job_id,
+                        handoff_files=(payload_path,),
+                    )
+                logger.info(
+                    "Cron job '%s' handed to restart-safe worker pid=%s execution=%s",
+                    job_id,
+                    acknowledgement.get("pid"),
                     execution_id,
                 )
+                with _running_lock, contextlib.suppress(TypeError, ValueError):
+                    _running_worker_pids[job_id] = int(acknowledgement.get("pid") or process.pid)
                 return _wait_for_external_cron_worker(
                     process,
                     execution_id=execution_id,
                     job_id=job_id,
                     handoff_files=(payload_path,),
                 )
-            logger.info(
-                "Cron job '%s' handed to restart-safe worker pid=%s execution=%s",
-                job_id,
-                acknowledgement.get("pid"),
-                execution_id,
-            )
-            with _running_lock, contextlib.suppress(TypeError, ValueError):
-                _running_worker_pids[job_id] = int(acknowledgement.get("pid") or process.pid)
-            return _wait_for_external_cron_worker(
-                process,
-                execution_id=execution_id,
-                job_id=job_id,
-                handoff_files=(payload_path,),
-            )
         returncode = process.poll()
         if returncode is not None:
             with _running_lock:
