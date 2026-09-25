@@ -459,6 +459,13 @@ class TelegramAdapter(BasePlatformAdapter):
             "HERMES_TELEGRAM_TEXT_BATCH_DELAY_SECONDS", 0.3, min_value=0.08, max_value=2.0)
         self._text_batch_split_delay_seconds = self._env_float_clamped(
             "HERMES_TELEGRAM_TEXT_BATCH_SPLIT_DELAY_SECONDS", 1.0, min_value=self._text_batch_delay_seconds, max_value=4.0)
+        # Fast/short settle windows are operator-tunable so rapid follow-up texts
+        # ("hey" … "you up?") coalesce into one turn/reply instead of two. The
+        # effective delay is min(cap, fast/short) — raise the cap alongside them.
+        self._TEXT_BATCH_FAST_DELAY_S = self._env_float_clamped(
+            "HERMES_TELEGRAM_TEXT_BATCH_FAST_DELAY_SECONDS", 0.18, min_value=0.05, max_value=2.0)
+        self._TEXT_BATCH_SHORT_DELAY_S = self._env_float_clamped(
+            "HERMES_TELEGRAM_TEXT_BATCH_SHORT_DELAY_SECONDS", 0.24, min_value=0.05, max_value=3.0)
         self._drop_delayed_deliveries = False
         # Held across disconnect: PTB advances the offset before our drop-guard runs, so Telegram won't
         # redeliver — dropping is permanent loss (see _hold_inbound_event).
