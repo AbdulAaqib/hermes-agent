@@ -1012,6 +1012,41 @@ class TestSyncTurn:
 # ---------------------------------------------------------------------------
 
 
+class TestTrivialTurnBatching:
+    def test_trivial_turns_dont_count_toward_threshold(self, provider_with_config):
+        # "lol"/"ok" are trivial: buffered as context but don't advance the
+        # counter, so the batch fills on the two substantive turns instead.
+        p = provider_with_config(retain_every_n_turns=2, retain_async=False)
+        for user in ("lol", "ok", "tell me about X", "and Y"):
+            p.sync_turn(user, "reply")
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_called_once()
+        item = p._client.aretain_batch.call_args.kwargs["items"][0]
+        assert len(json.loads(item["content"])) == 4
+
+    def test_on_session_end_flushes_buffered_turn_once(self, provider_with_config):
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+        p.sync_turn("tell me about X", "sure")
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_not_called()
+        p.on_session_end()
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_called_once()
+        # Second boundary call must not re-ship the already-retained turn.
+        p.on_session_end()
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_called_once()
+
+    def test_shutdown_flushes_buffered_turn(self, provider_with_config):
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+        client = p._client
+        p.sync_turn("tell me about X", "sure")
+        client.aretain_batch.assert_not_called()
+        p.shutdown()
+        client.aretain_batch.assert_called_once()
+        assert p._retain_queue.empty()
+
+
 class TestRetainIndicator:
     _SAVING = "👁️ Hindsight — saving to memory…"
 
@@ -1225,6 +1260,68 @@ class TestSessionSwitchBufferFlush:
         # switch time (3 turns accumulated, _turn_index was set to 3
         # by the last sync_turn).
         assert call_order[1] == "3"
+
+
+class TestSessionEndThenSwitchNoDoubleRetain:
+    """on_session_end ships the pending delta via _retain_pending; a following
+    on_session_switch must not re-ship turns already retained, since each retain
+    is a paid LLM extraction (#commit-session-boundary double-retain)."""
+
+    def _clear_capability_cache(self):
+        from plugins.memory.hindsight import _append_capability_cache, _append_capability_lock
+        with _append_capability_lock:
+            _append_capability_cache.clear()
+
+    def test_session_end_then_switch_retains_delta_once(
+        self, provider_with_config, monkeypatch
+    ):
+        self._clear_capability_cache()
+        monkeypatch.setattr(
+            "plugins.memory.hindsight._fetch_hindsight_api_version",
+            lambda *a, **kw: "0.5.6",
+        )
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+
+        p.sync_turn("turn1-user", "turn1-asst")
+        p.sync_turn("turn2-user", "turn2-asst")
+        p._client.aretain_batch.assert_not_called()
+
+        # Commit boundary runs both hooks, in order, on the SAME session.
+        p.on_session_end()
+        p.on_session_switch("new-sid", parent_session_id="test-session")
+        p._retain_queue.join()
+
+        # Exactly one paid extraction total — the delta shipped by on_session_end.
+        p._client.aretain_batch.assert_called_once()
+        kw = p._client.aretain_batch.call_args.kwargs
+        assert kw["document_id"] == "test-session"
+        assert kw["items"][0]["update_mode"] == "append"
+        flat = json.dumps(json.loads(kw["items"][0]["content"]))
+        assert "turn1-user" in flat
+        assert "turn2-user" in flat
+        assert p._retain_queue.empty()
+
+    def test_switch_only_flushes_buffered_delta(
+        self, provider_with_config, monkeypatch
+    ):
+        self._clear_capability_cache()
+        monkeypatch.setattr(
+            "plugins.memory.hindsight._fetch_hindsight_api_version",
+            lambda *a, **kw: "0.5.6",
+        )
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+
+        p.sync_turn("turn1-user", "turn1-asst")
+        p.sync_turn("turn2-user", "turn2-asst")
+        # No on_session_end: the switch itself must still flush the buffer once.
+        p.on_session_switch("new-sid", parent_session_id="test-session")
+        p._retain_queue.join()
+
+        p._client.aretain_batch.assert_called_once()
+        item = p._client.aretain_batch.call_args.kwargs["items"][0]
+        flat = json.dumps(json.loads(item["content"]))
+        assert "turn1-user" in flat
+        assert "turn2-user" in flat
 
 
 # ---------------------------------------------------------------------------

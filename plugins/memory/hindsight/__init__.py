@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -24,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from agent.memory_provider import MemoryProvider, RecallStatus, spawn_context_thread
+from agent.memory_provider import MemoryProvider, RecallStatus, is_trivial_prompt, spawn_context_thread
 from agent.secret_scope import UnscopedSecretError, get_secret
 from hermes_cli.config import cfg_get
 from hermes_constants import get_hermes_home
@@ -63,6 +64,17 @@ def set_retain_failure_hook(hook) -> None:
 
 _LOCAL_MODES = {"local", "local_embedded"}
 _RETAIN_CONTEXT_DEFAULT = "conversation between Hermes Agent and the User"
+
+# Laugh/emoji-only user turns carry no retainable signal; they don't count toward
+# the retain_every_n_turns threshold (is_trivial_prompt covers bare greetings/acks).
+_LAUGH_OR_EMOJI_ONLY_RE = re.compile(
+    r'^(?:lol|lmao|lmfao|haha+|hehe+|hah|heh|xd|rofl|ikr)$|^[\W_]+$',
+    re.IGNORECASE,
+)
+
+
+def _is_laugh_or_emoji_only(text: str) -> bool:
+    return bool(_LAUGH_OR_EMOJI_ONLY_RE.match((text or "").strip()))
 
 
 def _ensure_client_dependency() -> None:
@@ -1124,25 +1136,39 @@ class HindsightMemoryProvider(MemoryProvider):
             self._session_id = str(session_id).strip()
 
         self._session_turns.append(json.dumps(self._build_turn_messages(user_content, assistant_content), ensure_ascii=False))
-        self._turn_counter = self._turn_index = self._turn_counter + 1
+        self._turn_index += 1
+        trivial = is_trivial_prompt(user_content) or _is_laugh_or_emoji_only(user_content)
+        # Trivial turns are buffered as context but don't count toward the threshold
+        # (only meaningful when batching with retain_every_n_turns > 1).
+        if trivial and self._retain_every_n_turns > 1:
+            logger.debug("sync_turn: buffered trivial turn")
+            return
+        if not trivial:
+            self._turn_counter += 1
         if remainder := self._turn_counter % self._retain_every_n_turns:
             logger.debug("sync_turn: buffered turn %d (will retain at turn %d)",
                          self._turn_counter, self._turn_counter + (self._retain_every_n_turns - remainder))
             return
+        self._retain_pending("retain")
 
+    def _retain_pending(self, label: str) -> None:
+        """Ship the unretained turn delta as one retain; shared by sync_turn, on_session_end and shutdown."""
+        if len(self._session_turns) <= self._last_retained_turn_count:
+            logger.debug("sync_turn: skipped %s; no new turns since last retain", label)
+            return
         document_id, update_mode = self._resolve_retain_target(self._document_id)
         # Append-capable APIs get only the delta since the last retain; legacy /
         # overwrite APIs need the whole session because each retain replaces the document.
         start = self._last_retained_turn_count if update_mode == "append" else 0
         turns_to_retain = self._session_turns[start:]
         if not turns_to_retain:
-            logger.debug("sync_turn: skipped append retain; no new turns since last retain")
+            logger.debug("sync_turn: skipped %s; no new turns since last retain", label)
             return
         logger.debug("sync_turn: retaining %d/%d turns, payload %d chars",
                      len(turns_to_retain), len(self._session_turns), sum(len(t) for t in turns_to_retain))
 
         job = self._make_turn_retain_job(turns_to_retain, document_id=document_id,
-                                         update_mode=update_mode, label="retain")
+                                         update_mode=update_mode, label=label)
         # Indicator fires only past every skip/buffer gate: solely on turns that persist.
         # Model-independent status line; no-op without retain_indicator/status channel.
         if self._retain_indicator and self._status_callback is not None:
@@ -1153,8 +1179,7 @@ class HindsightMemoryProvider(MemoryProvider):
         self._enqueue_retain(job)
         # Advance the watermark only after the delta is queued so a later retain
         # doesn't re-ship turns already handed to the writer.
-        if update_mode == "append":
-            self._last_retained_turn_count = len(self._session_turns)
+        self._last_retained_turn_count = len(self._session_turns)
 
     def _enqueue_retain(self, job: Callable[[], None]) -> None:
         """Hand *job* to the (lazily started) writer and arm the atexit drain."""
@@ -1217,9 +1242,10 @@ class HindsightMemoryProvider(MemoryProvider):
     def on_session_switch(self, new_session_id: str, *, parent_session_id: str = "",
                           reset: bool = False, **kwargs) -> None:
         """Rotate per-session state (/resume, /branch, /reset, /new, compression) so
-        writes don't land in the previous session's document. Always: flush buffered
-        turns under the OLD ids first (``retain_every_n_turns > 1`` would silently
-        lose them), join the in-flight prefetch and drop its result (no stale recall
+        writes don't land in the previous session's document. Always: flush still-
+        unretained buffered turns under the OLD ids first (``retain_every_n_turns > 1``
+        would silently lose them; turns already shipped by ``on_session_end`` are not
+        re-sent), join the in-flight prefetch and drop its result (no stale recall
         for the new session), then set ``_session_id``, mint a fresh ``_document_id``
         and clear the batch buffers. ``reset`` is accepted but unneeded: buffer
         clearing is correct for every switch.
@@ -1240,19 +1266,28 @@ class HindsightMemoryProvider(MemoryProvider):
         # rotation (legacy: per-process unique; >=0.5.0: session-scoped + append).
         if self._session_turns:
             old_document_id, old_update_mode = self._resolve_retain_target(self._document_id)
-            job = self._make_turn_retain_job(list(self._session_turns), document_id=old_document_id,
-                                             update_mode=old_update_mode, label="flush-on-switch",
-                                             track_ops=False)
+            # Append APIs resume a session-scoped document, so on_session_end may
+            # already have shipped the pending delta via _retain_pending(); only
+            # the turns buffered since that watermark are new. A full-buffer flush
+            # here would re-extract already-retained turns (each retain is a paid
+            # LLM extraction). Legacy/overwrite APIs need the whole session because
+            # each retain replaces the document.
+            start = self._last_retained_turn_count if old_update_mode == "append" else 0
+            turns_to_flush = self._session_turns[start:]
+            if turns_to_flush:
+                job = self._make_turn_retain_job(turns_to_flush, document_id=old_document_id,
+                                                 update_mode=old_update_mode, label="flush-on-switch",
+                                                 track_ops=False)
 
-            def _flush():
-                try:
-                    job()
-                except Exception as e:
-                    logger.warning("Hindsight flush-on-switch failed: %s", e, exc_info=True)
-            # Same writer queue as sync_turn: FIFO behind queued old-session retains,
-            # no two threads racing aretain_batch on one document, shutdown drain intact.
-            if not self._shutting_down.is_set():
-                self._enqueue_retain(_flush)
+                def _flush():
+                    try:
+                        job()
+                    except Exception as e:
+                        logger.warning("Hindsight flush-on-switch failed: %s", e, exc_info=True)
+                # Same writer queue as sync_turn: FIFO behind queued old-session retains,
+                # no two threads racing aretain_batch on one document, shutdown drain intact.
+                if not self._shutting_down.is_set():
+                    self._enqueue_retain(_flush)
 
         # 2. Drain the old session's in-flight prefetch and drop its result.
         self._join_prefetch(3.0)
@@ -1267,6 +1302,11 @@ class HindsightMemoryProvider(MemoryProvider):
         self._turn_counter = self._turn_index = self._last_retained_turn_count = 0
         logger.debug("Hindsight on_session_switch: new_session=%s parent=%s reset=%s doc=%s",
                      self._session_id, self._parent_session_id, reset, self._document_id)
+
+    def on_session_end(self, messages: Optional[List[Dict[str, Any]]] = None, **kwargs) -> None:
+        """Flush the partly filled turn buffer at a real session boundary so it isn't lost."""
+        if self._auto_retain and not self._shutting_down.is_set():
+            self._retain_pending("session-end")
 
     def _close_client(self) -> None:
         if self._mode != "local_embedded":
@@ -1285,6 +1325,13 @@ class HindsightMemoryProvider(MemoryProvider):
 
     def shutdown(self) -> None:
         logger.debug("Hindsight shutdown: stopping writer + waiting for background threads")
+        # Flush any buffered turns BEFORE _shutting_down blocks new enqueues; the
+        # writer drain below still ships it.
+        if self._auto_retain and not self._shutting_down.is_set():
+            try:
+                self._retain_pending("shutdown-flush")
+            except Exception:
+                logger.warning("Hindsight shutdown-flush failed", exc_info=True)
         # Stop accepting retain jobs first so late sync_turn() calls are dropped.
         self._shutting_down.set()
         # The writer finishes in-flight work then exits on the sentinel; the
