@@ -547,6 +547,41 @@ def check_image_generation_requirements() -> bool:
 
 # --- Registry ---
 from tools.registry import registry, tool_error
+from tools.arg_coercion import register_arg_normalizer
+
+# Models routinely spell aspect_ratio as a literal ratio (or a word like "vertical") although
+# the schema only accepts the three canonical values. Normalise the common spellings before
+# validation so a recoverable spelling does not cost a wasted tool round-trip; unknown values
+# are left untouched and still fail validation exactly as before.
+_ASPECT_RATIO_ALIASES = {
+    "1:1": "square",
+    "3:4": "portrait", "2:3": "portrait", "4:5": "portrait",
+    "9:16": "portrait", "9:21": "portrait",
+    "vertical": "portrait", "tall": "portrait", "portrait": "portrait",
+    "4:3": "landscape", "3:2": "landscape", "5:4": "landscape",
+    "16:9": "landscape", "21:9": "landscape",
+    "horizontal": "landscape", "wide": "landscape", "landscape": "landscape",
+    "square": "square",
+}
+
+
+def normalize_image_generate_args(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Map common aspect_ratio spellings onto the schema's canonical enum values.
+
+    Case/space-insensitive; returns the original dict (identity) when nothing changes and
+    leaves unrecognised values untouched so validation still rejects them."""
+    if not isinstance(args, dict):
+        return args
+    raw = args.get("aspect_ratio")
+    if not isinstance(raw, str):
+        return args
+    canonical = _ASPECT_RATIO_ALIASES.get(raw.strip().lower().replace(" ", "").replace("_", ""))
+    if canonical is None or canonical == raw:
+        return args
+    return {**args, "aspect_ratio": canonical}
+
+
+register_arg_normalizer("image_generate", normalize_image_generate_args)
 
 IMAGE_GENERATE_SCHEMA = {
     "name": "image_generate",

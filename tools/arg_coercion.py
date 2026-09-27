@@ -17,10 +17,32 @@ from tools.registry import registry
 logger = logging.getLogger("model_tools")
 
 
+# Per-tool argument normalisers registered by a tool module (``register_arg_normalizer``).
+# A normaliser maps a tool's raw args to a repaired copy BEFORE schema coercion and
+# validation, so it can map model-invented aliases onto an enum's canonical values without
+# loosening validation for any other tool. Must be pure and must never raise (dispatch and
+# validation both run it).
+_ARG_NORMALIZERS: Dict[str, Any] = {}
+
+
+def register_arg_normalizer(tool_name: str, normalizer: Any) -> None:
+    """Register ``normalizer(args) -> args`` for one tool. Idempotent per tool name."""
+    _ARG_NORMALIZERS[tool_name] = normalizer
+
+
 def coerce_tool_args(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce string-typed args to their JSON-Schema types; originals kept on failure."""
     if not args or not isinstance(args, dict):
         return args
+
+    normalizer = _ARG_NORMALIZERS.get(tool_name)
+    if normalizer is not None:
+        try:
+            repaired = normalizer(args)
+            if isinstance(repaired, dict):
+                args = repaired
+        except Exception:  # pragma: no cover — a normaliser must never block dispatch
+            logger.debug("coerce_tool_args: normalizer for %s failed", tool_name, exc_info=True)
 
     schema = registry.get_schema(tool_name)
     properties = ((schema or {}).get("parameters") or {}).get("properties")

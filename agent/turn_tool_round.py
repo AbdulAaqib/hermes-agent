@@ -229,6 +229,12 @@ def stage_tool_call_message(
 
     assistant_msg = agent._build_assistant_message(assistant_message, finish_reason)
 
+    # A tool round ran this turn. The final-response path reads this to decide whether a
+    # reasoning-only clean stop is an answer (no tools: promote) or hidden thinking after
+    # tool calls (tools: run the empty-response ladder / post-tool nudge instead).
+    if assistant_message.tool_calls:
+        agent._turn_executed_tools = True
+
     turn_content = assistant_message.content or ""
 
     # A bare bracketed token (e.g. ``[memory]``) beside a function call is protocol

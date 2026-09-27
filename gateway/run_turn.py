@@ -1376,7 +1376,18 @@ class GatewayTurnMixin:
         # and would be delivered verbatim (peer agents would ingest it as a completed turn).
         if _is_gateway_hidden_reasoning_incomplete_turn(agent_result):
             response = ""
-        _intentional_silence = self._is_intentional_silence(agent_result, response)
+        # An output-hook placeholder for a reply that had no renderable content is not prose:
+        # never deliver the literal token. Treat it as intentional silence (send nothing).
+        _placeholder_suppressed = False
+        try:
+            from gateway.response_filters import is_empty_final_reply_placeholder
+            if not agent_result.get("failed") and is_empty_final_reply_placeholder(response):
+                logger.warning("empty final reply suppressed")
+                response = ""
+                _placeholder_suppressed = True
+        except Exception:
+            logger.debug("empty final reply placeholder check failed", exc_info=True)
+        _intentional_silence = _placeholder_suppressed or self._is_intentional_silence(agent_result, response)
 
         # "(empty)" = the model produced no visible content after exhausting all retries.
         if response == "(empty)" and not _intentional_silence:

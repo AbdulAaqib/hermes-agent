@@ -79,10 +79,16 @@ def finish_text_response(
     # at a truncated preview of this text; promote the reasoning to the visible answer
     # BEFORE the ladder. ``length`` (cut off mid-thought) stays on the continuation path,
     # and the promoted text is persisted as ordinary content so the next turn replays it.
+    #
+    # ...but NOT after tool calls this turn: there the reasoning is the model's planning
+    # for the next step, not a user-facing answer, and promoting it leaks the thinking
+    # (observed: a scrubbed-to-placeholder final reply). Such turns go through the
+    # empty-response ladder instead, where the #9400 post-tool nudge re-prompts the model.
     _content = assistant_message.content
     if (
         finish_reason == "stop"
         and not assistant_message.tool_calls
+        and not getattr(agent, "_turn_executed_tools", False)
         and (_content is None or (isinstance(_content, str) and not _content.strip()))
     ):
         _promoted = agent._extract_reasoning(assistant_message)

@@ -18,6 +18,18 @@ LIVE_GATEWAY_SILENT_MARKERS = frozenset({"[SILENT]", "SILENT", "NO_REPLY", "NO R
 # Longer than any marker could plausibly be, even with stray punctuation.
 _MARKER_LENGTH_CAP = 64
 
+# A ``transform_llm_output`` hook (e.g. a persona leak scrubber) may substitute a generic
+# "no real reply" token for a draft it refused to render. That token is not authored prose:
+# delivering it tells the user nothing and can be mistaken for a real answer. Suppress it
+# at the delivery boundary so an empty final reply goes out silent instead. Canonicalised
+# forms (uppercased, whitespace-collapsed) because matching reuses the silence-candidate path.
+EMPTY_FINAL_REPLY_PLACEHOLDERS = frozenset({"[MESSAGE UNAVAILABLE]"})
+
+
+def is_empty_final_reply_placeholder(response: Any) -> bool:
+    """True only when ``response`` is exactly a known empty-reply placeholder token."""
+    return any(c in EMPTY_FINAL_REPLY_PLACEHOLDERS for c in _canonical_silence_candidates(response))
+
 
 def _canonical_silence_candidate(text: str) -> str:
     return " ".join(text.strip().upper().split())
