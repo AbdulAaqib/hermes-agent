@@ -1146,20 +1146,107 @@ def _log_safe_path(path: str) -> str:
     return _LOG_UNSAFE_CHARS.sub("?", str(path))[:200]
 
 
-def _validated_delivery_path(raw_path, session_key: str, label: str) -> Optional[str]:
+def _validated_delivery_path(raw_path, session_key: str, label: str,
+                            *, resolve_via_ledger: bool = False) -> Optional[str]:
     """``validate_media_delivery_path`` plus the shared "Skipping unsafe ..." warning. A path the
-    host cannot see is retried against the active remote sandbox (ssh/modal/...; #466)."""
+    host cannot see is retried against the active remote sandbox (ssh/modal/...; #466).
+
+    ``resolve_via_ledger`` (MEDIA directives only): when the literal path is missing on this host,
+    try the durable image ledger — a generated image the model names by a stale/wrong cache
+    filename is re-resolved to the ledger's copy. This is what turns a hallucinated/stale
+    ``cache/images/gen_*.jpg`` MEDIA tag into the real delivered picture instead of a silent drop
+    (2026-09-27 incident). Bare local-file paths never use it: a model citing a missing path in
+    prose must not be silently swapped for an unrelated recent image."""
     raw = str(raw_path)
     safe_path = validate_media_delivery_path(raw, session_key=session_key)
     if not safe_path:
         from gateway.media_fetch import fetch_remote_media
         safe_path = fetch_remote_media(raw)
+    if not safe_path and resolve_via_ledger:
+        safe_path = resolve_missing_media_via_ledger(raw, session_key=session_key)
     if not safe_path:
         # Say WHY: a path that does not exist on the host is the common case (a model hallucinated or
         # a sandbox path failed to translate) and is not a security rejection.
         reason = "not found on this host" if not _existing_regular_file(raw) else "denied by the delivery policy"
         logger.warning("Skipping %s (%s): %s", label, reason, _log_safe_path(raw))
     return safe_path
+
+
+def _ledger_index_path() -> Path:
+    return get_hermes_home() / "images" / "index.jsonl"
+
+
+def resolve_missing_media_via_ledger(raw_path: str, session_key: str = "") -> Optional[str]:
+    """Resolve a missing MEDIA path to the image ledger's durable copy, or None.
+
+    Match order, both by basename so a model that names the right file under the
+    wrong directory (or a pruned ``cache/`` path) still delivers:
+      1. the exact basename of the named path (``file`` — the durable library copy —
+         preferred over ``original_cache_path``, which may itself have been pruned);
+      2. the newest ledger row carrying that basename's stem — i.e. the most recent
+         matching image — only when no exact basename match exists.
+
+    Read-only, fail-open: a missing/unreadable index returns None and the caller
+    keeps its existing drop-and-log behaviour. The resolved path must itself pass
+    the normal delivery validator, so the ledger can never widen what is
+    deliverable (denylist, sandbox translation and policy all still apply).
+    """
+    try:
+        named = os.path.basename(os.path.expanduser(str(raw_path or "")))
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not named:
+        return None
+    try:
+        raw_lines = _ledger_index_path().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    stem = os.path.splitext(named)[0]
+    import json as _json
+    exact: Optional[str] = None  # durable library ``file`` (or a cache fallback)
+    exact_cache: Optional[str] = None
+    recent: Optional[str] = None  # newest row whose basename stem matches
+    try:
+        for line in raw_lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(row, dict):
+                continue
+            lib = row.get("file") if isinstance(row.get("file"), str) else ""
+            cache = row.get("original_cache_path") if isinstance(row.get("original_cache_path"), str) else ""
+            candidates = [c for c in (lib, cache) if c]
+            if not candidates:
+                continue
+            if os.path.basename(lib) == named:
+                exact = lib
+                break
+            if exact_cache is None and os.path.basename(cache) == named:
+                exact_cache = cache
+            if any(os.path.splitext(os.path.basename(c) )[0] == stem for c in candidates):
+                recent = lib or cache  # newest matching row wins (append-only index)
+    except Exception:  # noqa: BLE001 — ledger resolution must never break delivery
+        return None
+    resolved = exact or exact_cache or recent
+    if not resolved:
+        return None
+    # The ledger stores a repo-relative ``images/library/...`` path in ``file`` (and an
+    # absolute path in ``original_cache_path``); anchor a relative one to HERMES_HOME
+    # before validating. If the durable library copy is gone, fall back to the cache
+    # path when that still exists.
+    def _anchor(p: str) -> str:
+        return p if os.path.isabs(p) else str(get_hermes_home() / p)
+    safe = validate_media_delivery_path(_anchor(resolved), session_key=session_key)
+    if not safe and resolved != exact_cache and exact_cache:
+        safe = validate_media_delivery_path(_anchor(exact_cache), session_key=session_key)
+    if safe:
+        logger.info("Resolved missing MEDIA path %s via image ledger -> %s",
+                    _log_safe_path(raw_path), _log_safe_path(safe))
+    return safe
 
 
 def _existing_regular_file(raw: str) -> bool:
@@ -3018,10 +3105,13 @@ class BasePlatformAdapter(ABC):
 
     @staticmethod
     def filter_media_delivery_paths(media_files, session_key: str = "") -> List[Tuple[str, bool]]:
-        """Drop unsafe MEDIA paths and normalize accepted paths."""
+        """Drop unsafe MEDIA paths and normalize accepted paths. A missing MEDIA path is
+        re-resolved through the image ledger (stale/hallucinated generated-image names still
+        deliver the real picture); bare local-file paths do not use this."""
         return [
             (safe_path, bool(is_voice)) for media_path, is_voice in media_files or []
-            if (safe_path := _validated_delivery_path(media_path, session_key, "MEDIA directive path"))]
+            if (safe_path := _validated_delivery_path(
+                media_path, session_key, "MEDIA directive path", resolve_via_ledger=True))]
 
     @staticmethod
     def filter_local_delivery_paths(file_paths, session_key: str = "") -> List[str]:
