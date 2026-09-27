@@ -2913,6 +2913,13 @@ class BasePlatformAdapter(ABC):
         text = f"{caption}\n{image_url}" if caption else image_url
         return await self.send(chat_id=chat_id, content=text, reply_to=reply_to, metadata=metadata)
 
+    async def send_media_chat_action(
+        self, chat_id: str, action: str = "upload_photo",
+        metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Best-effort native chat action while a deferred attachment is generated
+        (Telegram ``upload_photo``). No-op by default; platforms that support
+        actions override it. Must never raise — a missing action is harmless."""
+
     async def send_animation(
         self, chat_id: str, animation_url: str, caption: Optional[str] = None,
         reply_to: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> SendResult:
@@ -4469,12 +4476,29 @@ class BasePlatformAdapter(ABC):
             # alive.
             await self._stop_typing_refresh(event.source.chat_id, typing_task, metadata=_thread_metadata)
             await self._fire_post_delivery_callback(session_key, interrupt_event)
+            # The reply text is out; now launch any plugin-deferred image generation as a detached
+            # background task (text-first, photo-after). Never awaited here — it must not delay the
+            # turn, and its failure is contained inside the registry.
+            await self._deliver_deferred_media(session_key, _mark_notify_metadata(_thread_metadata))
             # Callback work or a late refresh may have recreated typing — one final bounded stop.
             await self._stop_typing_refresh(
                 event.source.chat_id, None, metadata=_thread_metadata, stop_attempts=1)
             # Flush any timer that missed the in-band drain, then reconcile ownership.
             await self._flush_text_debounce_now(session_key)
             self._finish_session_task(session_key, interrupt_event)
+
+    async def _deliver_deferred_media(self, session_key: str,
+                                      metadata: Optional[Dict[str, Any]]) -> None:
+        """Fire the plugin-registered deferred media job for ``session_key`` after the reply
+        text was delivered. Live-chat only: cron/one-shot lanes never reach this method. Spawns
+        a background task and returns immediately; a failure is logged, never surfaced."""
+        if not session_key:
+            return
+        try:
+            from gateway.deferred_media import deliver_deferred_media
+            await deliver_deferred_media(self, session_key, metadata=metadata)
+        except Exception:
+            logger.debug("[%s] deferred media delivery failed", self.name, exc_info=True)
 
     def _spawn_drain_task(self, pending_event: MessageEvent, session_key: str) -> None:
         """Hand the session to a fresh task for a queued follow-up — never recurse (chained
