@@ -177,6 +177,49 @@ class TestExtractImages:
         # The PDF link must survive in cleaned content
         assert "![report](https://example.com/report.pdf)" in cleaned
 
+    def test_gif_markdown_accepts_extensionless_url(self):
+        # Klipy serves some animations without a file suffix; the `![gif]` label
+        # alone must qualify the URL for native delivery.
+        content = "![gif](https://cdn.klipy.com/abc123)"
+        images, cleaned = BasePlatformAdapter.extract_images(content)
+        assert images == [("https://cdn.klipy.com/abc123", "gif")]
+        assert "![gif]" not in cleaned
+
+    def test_gif_markdown_accepts_klipy_mp4(self):
+        content = "![gif](https://media.klipy.com/x/y/preview.mp4)"
+        images, _ = BasePlatformAdapter.extract_images(content)
+        assert len(images) == 1 and images[0][0].endswith("preview.mp4")
+
+    def test_klipy_webp_variant_extracted_without_gif_alt(self):
+        content = "![anim](https://cdn.klipy.com/x.webp)"
+        images, _ = BasePlatformAdapter.extract_images(content)
+        assert len(images) == 1 and images[0][0].endswith("x.webp")
+
+    def test_plain_non_image_url_still_preserved(self):
+        content = "![site](https://example.com/page)"
+        images, cleaned = BasePlatformAdapter.extract_images(content)
+        assert images == []
+        assert "![site](https://example.com/page)" in cleaned
+
+
+class TestIsAnimationUrl:
+    def test_gif_suffix_is_animation(self):
+        assert BasePlatformAdapter._is_animation_url("https://cdn.example/a.gif") is True
+
+    def test_gif_markdown_alt_without_suffix_is_animation(self):
+        assert BasePlatformAdapter._is_animation_url(
+            "https://cdn.klipy.com/abc123", "gif") is True
+
+    def test_klipy_mp4_and_webp_are_animations(self):
+        assert BasePlatformAdapter._is_animation_url(
+            "https://media.klipy.com/x/preview.mp4") is True
+        assert BasePlatformAdapter._is_animation_url(
+            "https://cdn.giphy.com/x/clip.webp") is True
+
+    def test_static_image_is_not_animation(self):
+        assert BasePlatformAdapter._is_animation_url("https://cdn.example/a.png") is False
+        assert BasePlatformAdapter._is_animation_url("https://cdn.example/a.png", "cat") is False
+
 
 # ---------------------------------------------------------------------------
 # extract_media

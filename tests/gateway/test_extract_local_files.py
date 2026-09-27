@@ -86,6 +86,15 @@ class TestBasicDetection:
         paths, _ = _extract("/var/data/image.png")
         assert paths == ["/var/data/image.png"]
 
+    def test_bare_cache_images_path_on_own_line_is_extracted(self):
+        # Audit 4 #9: a reply may carry a bare generated image path (no MEDIA:
+        # prefix). It must be delivered as media, not printed as text.
+        path = "/home/user/.hermes/cache/images/runpod_20260927_015727_12e00c3e.jpeg"
+        paths, cleaned = _extract(
+            f"look at me while you imagine it:\n{path}", existing_files={path})
+        assert paths == [path]
+        assert path not in cleaned
+
 
 # ---------------------------------------------------------------------------
 # Non-existent files are skipped

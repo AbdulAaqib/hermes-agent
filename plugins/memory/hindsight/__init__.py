@@ -210,6 +210,33 @@ _loop_lock = threading.Lock()
 # Pushed to the per-provider retain queue to wake the writer for a clean exit.
 _WRITER_SENTINEL = object()
 
+# Torn-down interpreter/executor markers. Python's ThreadPoolExecutor raises
+# ``RuntimeError: cannot schedule new futures after interpreter shutdown`` once the
+# atexit hook has fired; aiohttp DNS/connect then surfaces it mid-recall during
+# oneshot-CLI teardown. These are expected at process exit, not real failures.
+_SHUTDOWN_ERROR_MARKERS = (
+    "cannot schedule new futures after interpreter shutdown",
+    "cannot schedule new futures after shutdown",
+    "interpreter shutdown",
+    "event loop is closed",
+)
+
+
+def _is_shutdown_error(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in _SHUTDOWN_ERROR_MARKERS)
+
+
+def _is_server_disconnected_error(exc: BaseException) -> bool:
+    """True for aiohttp's ServerDisconnectedError (idempotent read can be retried once)."""
+    try:
+        from aiohttp import ServerDisconnectedError
+    except Exception:  # pragma: no cover - aiohttp is a hard dep of the client
+        return False
+    if isinstance(exc, ServerDisconnectedError):
+        return True
+    return "server disconnected" in f"{exc}".lower()
+
 
 def _get_loop() -> asyncio.AbstractEventLoop:
     """Return a long-lived event loop running on a background thread."""
@@ -966,7 +993,17 @@ class HindsightMemoryProvider(MemoryProvider):
             kwargs.update(tags=self._recall_tags, tags_match=self._recall_tags_match)
         if self._recall_types:
             kwargs["types"] = self._recall_types
-        resp = self._run_hindsight_operation(lambda client: client.arecall(**kwargs))
+        # Recall is an idempotent read: a dropped aiohttp connection (ServerDisconnectedError)
+        # is retried ONCE before surfacing as a normal recall failure.
+        for attempt in range(2):
+            try:
+                resp = self._run_hindsight_operation(lambda client: client.arecall(**kwargs))
+                break
+            except Exception as exc:
+                if attempt == 0 and _is_server_disconnected_error(exc):
+                    logger.debug("Recall: server disconnected, retrying once")
+                    continue
+                raise
         return resp.results or []
 
     def _reflect(self, query: str) -> str | None:
@@ -978,6 +1015,9 @@ class HindsightMemoryProvider(MemoryProvider):
     def _do_recall(self, query: str) -> tuple[str, int]:
         """One recall/reflect for *query* (background prefetch and ``recall_sync`` paths)
         -> (text, memory count); the count is 0 for reflect (synthesis) and on error."""
+        if self._shutting_down.is_set():
+            logger.debug("Recall: skipped (shutting down)")
+            return "", 0
         if self._recall_max_input_chars:
             query = query[:self._recall_max_input_chars]
         try:
@@ -1234,6 +1274,12 @@ class HindsightMemoryProvider(MemoryProvider):
         try:
             return json.dumps({"result": handler(self, args)})
         except Exception as e:
+            # Oneshot-CLI teardown runs trailing tool calls after the executor/loop is torn
+            # down; that raises "cannot schedule new futures after interpreter shutdown".
+            # It is not a real memory failure — skip quietly at debug (audit: 106 warnings).
+            if self._shutting_down.is_set() or _is_shutdown_error(e):
+                logger.debug("%s skipped: interpreter shutting down (%s)", tool_name, e)
+                return json.dumps({"result": "(memory provider is shutting down)"})
             logger.warning("%s failed: %s", tool_name, e, exc_info=True)
             return tool_error(f"{failure}: {e}")
 

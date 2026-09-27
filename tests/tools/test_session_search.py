@@ -1159,3 +1159,36 @@ class TestNewResetLineageBrowse:
         sids = [r["session_id"] for r in result["results"]]
         assert "s_legacy_child" in sids
 
+
+
+class TestScrollForeignAnchor:
+    """Audit 5: ~14% of cron calls errored `around_message_id ... not in session_id`.
+    A stale/cross-session anchor must resolve or be ignored with a note, never error."""
+
+    def test_foreign_anchor_resolves_owning_session(self, db):
+        db.create_session("s_a", source="cli")
+        db.create_session("s_b", source="cli")
+        db.append_message("s_a", role="user", content="alpha one")
+        b_mid = db.append_message("s_b", role="user", content="bravo two")
+
+        result = json.loads(session_search(
+            session_id="s_a", around_message_id=b_mid, window=2, db=db,
+        ))
+        assert result["success"] is True
+        assert result["mode"] == "scroll"
+        assert result["session_id"] == "s_b"
+        assert any(m["id"] == b_mid for m in result["messages"])
+        assert "is not in s_a" in result.get("warning", "")
+
+    def test_unknown_anchor_ignored_not_error(self, db):
+        db.create_session("s_only", source="cli")
+        db.append_message("s_only", role="user", content="hello")
+
+        result = json.loads(session_search(
+            session_id="s_only", around_message_id=999999, window=2, db=db,
+        ))
+        assert result["success"] is True
+        assert result["mode"] == "scroll"
+        assert result["messages"] == []
+        assert "not found" in result.get("warning", "")
+        assert "error" not in result

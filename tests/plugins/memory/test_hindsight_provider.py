@@ -1824,3 +1824,82 @@ class TestMultiplexBackgroundScope:
                 t.join(timeout=5)
         assert created == ["p1-secret"]
         assert "Daemon started successfully" in (home / "logs" / "hindsight-embed.log").read_text()
+
+
+# ---------------------------------------------------------------------------
+# Teardown-safe recall / shutdown classification (#audit: 106x
+# "cannot schedule new futures after interpreter shutdown" during oneshot exit)
+# ---------------------------------------------------------------------------
+
+
+class TestShutdownSafeRecall:
+    def test_is_shutdown_error_matches_executor_teardown(self):
+        from plugins.memory.hindsight import _is_shutdown_error
+
+        assert _is_shutdown_error(
+            RuntimeError("cannot schedule new futures after interpreter shutdown"))
+        assert _is_shutdown_error(RuntimeError("cannot schedule new futures after shutdown"))
+        assert not _is_shutdown_error(ValueError("unrelated"))
+
+    def test_is_server_disconnected_matches_aiohttp(self):
+        import aiohttp
+
+        from plugins.memory.hindsight import _is_server_disconnected_error
+
+        assert _is_server_disconnected_error(aiohttp.ServerDisconnectedError())
+        assert _is_server_disconnected_error(RuntimeError("Server disconnected"))
+        assert not _is_server_disconnected_error(ValueError("nope"))
+
+    def test_tool_call_survives_shutdown_runtimeerror(self, provider, monkeypatch):
+        def _boom(*a, **k):
+            raise RuntimeError("cannot schedule new futures after interpreter shutdown")
+
+        monkeypatch.setattr(provider, "_recall", _boom)
+        payload = json.loads(provider.handle_tool_call("hindsight_recall", {"query": "x"}))
+        assert "error" not in payload
+        assert "shutting down" in payload["result"]
+
+    def test_tool_call_survives_when_shutting_down_flag_set(self, provider, monkeypatch):
+        provider._shutting_down.set()
+
+        def _boom(*a, **k):
+            raise ValueError("anything")
+
+        monkeypatch.setattr(provider, "_recall", _boom)
+        payload = json.loads(provider.handle_tool_call("hindsight_recall", {"query": "x"}))
+        assert "error" not in payload
+
+    def test_do_recall_skips_quietly_when_shutting_down(self, provider, monkeypatch):
+        provider._shutting_down.set()
+        monkeypatch.setattr(provider, "_recall",
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
+        assert provider._do_recall("query") == ("", 0)
+
+    def test_recall_retries_once_on_server_disconnect(self, provider, monkeypatch):
+        import aiohttp
+
+        calls = {"n": 0}
+        ok = SimpleNamespace(results=[SimpleNamespace(text="Memory 1")])
+
+        def _op(operation):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise aiohttp.ServerDisconnectedError()
+            return ok
+
+        monkeypatch.setattr(provider, "_run_hindsight_operation", _op)
+        results = provider._recall("query")
+        assert calls["n"] == 2
+        assert [r.text for r in results] == ["Memory 1"]
+
+    def test_recall_does_not_retry_non_disconnect(self, provider, monkeypatch):
+        calls = {"n": 0}
+
+        def _op(operation):
+            calls["n"] += 1
+            raise ValueError("boom")
+
+        monkeypatch.setattr(provider, "_run_hindsight_operation", _op)
+        with pytest.raises(ValueError):
+            provider._recall("query")
+        assert calls["n"] == 1

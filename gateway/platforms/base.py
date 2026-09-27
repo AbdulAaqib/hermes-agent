@@ -44,6 +44,9 @@ _AUDIO_EXTS = frozenset(_AUDIO_MIME_TYPES)
 # Outbound dispatch partition for MEDIA/local files (image batch vs send_video).
 _VIDEO_EXTS = frozenset({".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"})
 _IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
+# Animation CDNs (Klipy/Giphy/Tenor) serve the same clip as .gif/.webp/.mp4; a
+# ``.gif``-only suffix gate drops the mp4/webp variants from native delivery.
+_ANIMATION_CDN_MARKERS = ("klipy", "giphy", "tenor")
 # Telegram sendAudio accepts only MP3 / M4A; others go via sendVoice (Opus/OGG) or as a document.
 _TELEGRAM_AUDIO_ATTACHMENT_EXTS = frozenset({'.mp3', '.m4a'})
 _TELEGRAM_VOICE_EXTS = frozenset({'.ogg', '.opus'})
@@ -455,8 +458,8 @@ def single_image_caption_merge_target(images, media_files, local_files=(), *,
         return None
     image_targets: list = []
     other_attachment = False
-    for url, _alt in images or []:
-        if BasePlatformAdapter._is_animation_url(url):
+    for url, alt in images or []:
+        if BasePlatformAdapter._is_animation_url(url, alt):
             image_targets.append(("animation_url", url))
         else:
             image_targets.append(("image_url", url))
@@ -2798,7 +2801,7 @@ class BasePlatformAdapter(ABC):
                             safe_url_for_log(image_url), alt_text[:30] if alt_text else "")
                 if image_url.startswith("file://"):
                     sender, url_kw = self.send_image_file, {"image_path": _unquote(image_url[7:])}
-                elif self._is_animation_url(image_url):
+                elif self._is_animation_url(image_url, alt_text):
                     sender, url_kw = self.send_animation, {"animation_url": image_url}
                 else:
                     sender, url_kw = self.send_image, {"image_url": image_url}
@@ -2832,9 +2835,20 @@ class BasePlatformAdapter(ABC):
             chat_id=chat_id, image_url=animation_url, caption=caption, reply_to=reply_to, metadata=metadata)
 
     @staticmethod
-    def _is_animation_url(url: str) -> bool:
-        """Check if a URL points to an animated GIF (vs a static image)."""
-        return url.lower().split('?')[0].endswith('.gif')
+    def _is_animation_url(url: str, alt: str = "") -> bool:
+        """Check if a URL points to an animated asset (vs a static image).
+
+        True for a ``.gif`` suffix, a model-labelled ``![gif](...)`` markdown alt
+        (the URL itself may be extension-less), and the mp4/webp variants served
+        by animation CDNs (Klipy/Giphy/Tenor)."""
+        if alt and alt.strip().lower() == "gif":
+            return True
+        low = url.lower().split('?')[0]
+        if low.endswith('.gif'):
+            return True
+        if any(host in url.lower() for host in _ANIMATION_CDN_MARKERS):
+            return low.endswith(('.mp4', '.webp', '.gif'))
+        return False
 
     @staticmethod
     def extract_images(content: str) -> Tuple[List[Tuple[str, str]], str]:
@@ -2846,9 +2860,20 @@ class BasePlatformAdapter(ABC):
         # Only extract URLs that look like actual images.
         markers = ('.png', '.jpg', '.jpeg', '.gif', '.webp', 'fal.media', 'fal-cdn',
                    'replicate.delivery')
+
+        def _is_extractable_image(url: str, alt: str) -> bool:
+            low = url.lower()
+            # ``![gif](...)`` marks an animation regardless of the URL's suffix
+            # (Klipy and friends may serve an extension-less or .mp4/.webp URL).
+            if alt.strip().lower() == "gif":
+                return True
+            if any(marker in low for marker in markers):
+                return True
+            return any(host in low for host in _ANIMATION_CDN_MARKERS) and any(
+                ext in low for ext in ('.mp4', '.webp', '.gif'))
+
         images = [(m.group(2), m.group(1)) for m in re.finditer(md_pattern, content)
-                  if any(m.group(2).lower().endswith(ext) or ext in m.group(2).lower()
-                         for ext in markers)]
+                  if _is_extractable_image(m.group(2), m.group(1))]
         images.extend((match.group(1), "") for match in re.finditer(html_pattern, content))
         if not images:
             return images, content

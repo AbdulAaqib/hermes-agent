@@ -124,6 +124,9 @@ def _kanban_handler(tool_name: str) -> Callable:
     def deco(fn):
         @functools.wraps(fn)
         def wrapper(args: dict, **kw) -> str:
+            if tool_name not in _KANBAN_READONLY_TOOLS and os.environ.get("HERMES_E2E_READONLY") == "1":
+                from utils import E2E_READONLY_TOOL_ERROR
+                return tool_error(E2E_READONLY_TOOL_ERROR)
             try:
                 return fn(args, **kw)
             except _Reject as e:
@@ -134,6 +137,10 @@ def _kanban_handler(tool_name: str) -> Callable:
                 return tool_error(f"{tool_name}: {e}")
         return wrapper
     return deco
+
+
+# Board reads that stay available under HERMES_E2E_READONLY=1; every other tool mutates.
+_KANBAN_READONLY_TOOLS = frozenset({"kanban_show", "kanban_list", "kanban_attachments"})
 
 
 def _reject_delegated_child_mutation(tool_name: str) -> None:

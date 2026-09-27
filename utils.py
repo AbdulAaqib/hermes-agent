@@ -35,6 +35,19 @@ def env_var_enabled(name: str, default: str = "") -> bool:
     return is_truthy_value(os.getenv(name, default), default=False)
 
 
+def e2e_readonly_enabled() -> bool:
+    """True when the E2E harness set ``HERMES_E2E_READONLY=1``.
+
+    A read-only e2e/test session must make NO side-effecting writes on the host: no cron
+    jobs, no outbound platform sends, no kanban mutations. The exact ``== "1"`` contract
+    matches the existing mnemosyne memory-write gate so the harness switch has one meaning.
+    """
+    return os.environ.get("HERMES_E2E_READONLY") == "1"
+
+
+E2E_READONLY_TOOL_ERROR = "blocked: E2E read-only mode"
+
+
 def _preserve_file_mode(path: Path) -> "int | None":
     """Permission bits of *path* if it exists, else ``None``."""
     try:

@@ -446,18 +446,32 @@ def _scroll(db, session_id: str, around_message_id: int, window: int = 5,
     messages = view.get("window") or []
     extra = {}
     if not messages and owning and owning != session_id:
-        # Lineage rebind: the caller paired a parent session_id with a message id
-        # living in a descendant — serve the owner's window transparently.
-        rebind_view = _same_lineage(db, session_id, owning) and _quiet(
+        # Anchor belongs to another session. Lineage rebind serves a descendant's window
+        # transparently; a non-lineage owner (a stale id from a previous session's search
+        # result, or a cross-session reference) is still resolved to the owning session
+        # rather than erroring — the caller asked to scroll around that exact message.
+        rebind_view = _quiet(
             lambda: db.get_messages_around(owning, around_message_id, window=window),
             None, "rebind get_messages_around failed: %s", with_exc=True)
         if rebind_view and rebind_view.get("window"):
-            extra["warning"] = (f"around_message_id {around_message_id} lives in {owning} "
-                                f"(child of {session_id}); rebound transparently")
+            if _same_lineage(db, session_id, owning):
+                extra["warning"] = (f"around_message_id {around_message_id} lives in {owning} "
+                                    f"(child of {session_id}); rebound transparently")
+            else:
+                extra["warning"] = (f"around_message_id {around_message_id} is not in {session_id}; "
+                                    f"it lives in {owning}, so the owning session was served instead")
             view, messages, session_id = rebind_view, rebind_view["window"], owning
             session_meta = _get_session_meta(db, owning) or session_meta
     if not messages:
-        return tool_error(f"around_message_id {around_message_id} not in session_id {session_id}", success=False)
+        # Anchor unknown (or unloadable): ignore it with a note instead of erroring. Callers treat
+        # a missing window as a hard failure today, which made a stale anchor id poison repeated
+        # cron searches (audit 5: ~14% `around_message_id ... not in session_id`).
+        return _ok(
+            mode="scroll", session_id=session_id, around_message_id=around_message_id,
+            session_meta=_session_meta_block(session_meta), window=window, messages=[],
+            messages_before=view.get("messages_before", 0), messages_after=view.get("messages_after", 0),
+            warning=(f"around_message_id {around_message_id} was not found in {session_id}; "
+                     "anchor ignored (no window to show)"))
     return _ok(
         mode="scroll", session_id=session_id, around_message_id=around_message_id,
         session_meta=_session_meta_block(session_meta), window=window,

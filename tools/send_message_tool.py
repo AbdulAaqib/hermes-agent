@@ -35,6 +35,9 @@ def send_message_tool(args, **kw):
     action = args.get("action", "send")
     if action == "list":
         return _handle_list()
+    # E2E read-only mode: an outbound send/react is a real side effect on a live platform.
+    if os.environ.get("HERMES_E2E_READONLY") == "1":
+        return _error("blocked: E2E read-only mode")
     if action in ("react", "unreact"):
         return _handle_react(args, remove=action == "unreact")
     return _handle_send(args)

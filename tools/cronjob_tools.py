@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 import copy
 
 from hermes_constants import display_hermes_home
+from utils import E2E_READONLY_TOOL_ERROR, e2e_readonly_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -965,6 +966,11 @@ def cronjob(
     del a["task_id"]  # unused but kept for handler signature compatibility
     try:
         normalized = (action or "").strip().lower()
+        # E2E read-only mode: every action except list is side-effecting (create/update/remove/
+        # pause/resume/run/resnap write jobs.json or fire a delivery). Refuse with a tool error so
+        # an e2e session cannot schedule real Telegram-delivering jobs.
+        if normalized != "list" and e2e_readonly_enabled():
+            return tool_error(E2E_READONLY_TOOL_ERROR, success=False)
         handler = _JOBLESS_ACTIONS.get(normalized)
         if handler is not None:
             return handler(a)
