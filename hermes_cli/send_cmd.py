@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -15,6 +16,9 @@ _USAGE_EXIT = 2
 _FAILURE_EXIT = 1
 _SUCCESS_EXIT = 0
 
+# Matches the tool-side gate in tools/send_message_tool.py and the E2E harness.
+_E2E_READONLY_MARKER = "blocked: E2E read-only mode"
+
 
 def _fail(msg: str, exit_code: int | None = None) -> int:
     """Print ``msg`` to stderr; exit with ``exit_code`` when given, else return ``_FAILURE_EXIT``."""
@@ -22,6 +26,45 @@ def _fail(msg: str, exit_code: int | None = None) -> int:
     if exit_code is not None:
         sys.exit(exit_code)
     return _FAILURE_EXIT
+
+
+def _pid_alive(pid: int) -> bool:
+    """True when *pid* names a live process. False on any error (a stale or
+    malformed sentinel must never wedge real sending)."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, just not ours
+    except OSError:
+        return False
+    return True
+
+
+def _e2e_send_blocked() -> Optional[str]:
+    """Reason ``hermes send`` must not deliver, or None when sending is allowed.
+
+    Two layers, because a shell can scrub ``HERMES_E2E_READONLY`` before invoking
+    the CLI (the exact 2026-09-27 leak): the env marker, and a pid-stamped sentinel
+    that e2e_common's RunLock writes for the duration of a live test run. A sentinel
+    whose recorded pid is dead is ignored.
+    """
+    if os.environ.get("HERMES_E2E_READONLY") == "1":
+        return "HERMES_E2E_READONLY=1"
+    try:
+        from hermes_cli.config import get_hermes_home
+        sentinel = get_hermes_home() / "tests-e2e" / "output" / ".e2e_active"
+        raw = sentinel.read_text(encoding="utf-8").strip()
+        if raw and _pid_alive(int(raw.split()[0])):
+            return f"live E2E run (pid {int(raw.split()[0])})"
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    return None
 
 
 def _read_message_body(positional: Optional[str], file_path: Optional[str]) -> Optional[str]:
@@ -170,6 +213,9 @@ def cmd_send(args: argparse.Namespace) -> None:
         # `hermes send --list telegram` lands "telegram" in the `message` positional.
         exit_code = _list_targets(getattr(args, "message", None), json_mode=getattr(args, "json", False))
         sys.exit(exit_code)
+    blocked_reason = _e2e_send_blocked()
+    if blocked_reason is not None:
+        _fail(f"hermes send: {_E2E_READONLY_MARKER} ({blocked_reason})", _FAILURE_EXIT)
     target = (getattr(args, "to", None) or "").strip()
     if not target:
         _fail(

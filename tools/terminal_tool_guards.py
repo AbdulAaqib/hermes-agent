@@ -11,6 +11,7 @@ keeps resolving.
 
 import json
 import logging
+import os
 import re
 import shlex
 import stat
@@ -62,6 +63,36 @@ def _safe_command_preview(command: Any, limit: int = 200) -> str:
 def _blocked_json(error: str, status: str) -> str:
     """The guard result envelope: exit_code 1 + *error* + *status*."""
     return json.dumps({"output": "", "exit_code": 1, "error": error, "status": status}, ensure_ascii=False)
+
+
+# Commands that leave the read-only sandbox: re-entering the messaging/cron
+# surface, reaching Telegram directly, or scrubbing the read-only marker so a
+# later command escapes the gate. A read-only E2E turn has no business running
+# any of these (2026-09-27: a test turn found HERMES_E2E_READONLY in its env via
+# terminal, `unset` it, and sent a real Telegram message with the test image).
+_E2E_READONLY_BLOCK_RES = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"hermes\s+(?:send|cron|chat)\b",
+    r"HERMES_E2E_READONLY",
+    r"api\.telegram\.org",
+    r"unset\s+HERMES",
+    r"env\s+-u\b",
+))
+
+
+def e2e_readonly_block(command: str) -> Optional[str]:
+    """Refuse side-effecting commands while the AGENT PROCESS is in E2E read-only mode.
+
+    Gated on the agent process's own ``os.environ`` (set by e2e_common before the
+    turn starts), never on anything the model can change. Returns the JSON error
+    string when blocked, else None. ``force=True`` cannot bypass this guard.
+    """
+    if os.environ.get("HERMES_E2E_READONLY") != "1":
+        return None
+    text = command if isinstance(command, str) else str(command or "")
+    if any(r.search(text) for r in _E2E_READONLY_BLOCK_RES):
+        logger.warning("Blocked in E2E read-only mode: %s", _safe_command_preview(command))
+        return _blocked_json("blocked: E2E read-only mode", "blocked")
+    return None
 
 
 _SHELL_LEVEL_BACKGROUND_RE = re.compile(

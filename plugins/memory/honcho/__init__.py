@@ -71,6 +71,31 @@ def _cfg_usable(cfg) -> bool:
     return bool(cfg.enabled and (cfg.api_key or cfg.base_url))
 
 
+# E2E read-only switch. The test harness sets HERMES_E2E_READONLY=1; every Honcho
+# WRITE path (session creation, migration uploads, message adds, card/conclusion
+# writes, dreams) must short-circuit. Honcho cannot read without a session, so in
+# read-only mode the provider is skipped entirely and one INFO line is logged.
+_E2E_READONLY_ENV = "HERMES_E2E_READONLY"
+_readonly_logged = False
+_readonly_log_lock = threading.Lock()
+
+
+def _e2e_readonly() -> bool:
+    """True when the E2E harness requested all memory writes be disabled."""
+    return os.environ.get(_E2E_READONLY_ENV) == "1"
+
+
+def _log_readonly_once() -> None:
+    global _readonly_logged
+    if _readonly_logged:
+        return
+    with _readonly_log_lock:
+        if _readonly_logged:
+            return
+        _readonly_logged = True
+    logger.info("honcho: E2E read-only mode, all Honcho writes and session creation disabled")
+
+
 # Static per-mode system prompt text (prompt-cache friendly: never changes between turns).
 _TOOL_GUIDE = (
     "Use honcho_profile for a quick factual snapshot, "
@@ -238,6 +263,15 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         try:
             agent_context, platform = kwargs.get("agent_context", ""), kwargs.get("platform", "cli")
             self._platform = str(platform or "cli")
+            if _e2e_readonly():
+                # No session may be created, no prior memory uploaded, no prewarm
+                # queued. Marking cron-skipped makes the rest of the provider inert
+                # (no tools, no prefetch, no writes) and logs once.
+                _log_readonly_once()
+                logger.debug("Honcho skipped: E2E read-only mode")
+                self._cron_skipped = True
+                return
+
             if agent_context in {"cron", "flush"} or platform == "cron":
                 logger.debug("Honcho skipped: cron/flush context (agent_context=%s, platform=%s)",
                              agent_context, platform)
@@ -362,6 +396,12 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
 
     def _do_session_init(self, cfg, session_id: str, **kwargs) -> None:
         """Shared session initialization for both eager and lazy paths."""
+        if _e2e_readonly():
+            # Defense in depth: initialize() already returns early, but a direct
+            # call must never create a session or upload prior memory either.
+            _log_readonly_once()
+            logger.debug("Honcho _do_session_init skipped: E2E read-only mode")
+            return
         from plugins.memory.honcho.client import get_honcho_client
         from plugins.memory.honcho.session import HonchoSessionManager
 
@@ -413,7 +453,14 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         return self._session_initialized or not (self._init_thread and self._init_thread.is_alive())
 
     def _writes_enabled(self) -> bool:
-        """``saveMessages`` is the operator's hard write gate for every Honcho mutation path."""
+        """``saveMessages`` is the operator's hard write gate for every Honcho mutation path.
+
+        E2E read-only mode overrides it: no message adds, card/conclusion writes or
+        dreams may reach the backend while a read-only test run is active.
+        """
+        if _e2e_readonly():
+            _log_readonly_once()
+            return False
         return not self._cron_skipped and getattr(self._config, "save_messages", True)
 
     def _ready_or_kick_init(self) -> bool:
@@ -949,6 +996,9 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         if card_update := args.get("card"):
             if refusal := self._bot_turn_write_refusal():
                 return refusal
+            if _e2e_readonly():
+                _log_readonly_once()
+                return tool_error("blocked: E2E read-only mode")
             truncated = len(card_update) > PEER_CARD_MAX_FACTS
             result = self._manager.set_peer_card(self._session_key, card_update, peer=peer)
             if result is None:
@@ -1043,6 +1093,9 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
                 self._session_key, query=query or None, peer=peer, level=level)})
         if refusal := self._bot_turn_write_refusal():
             return refusal
+        if _e2e_readonly():
+            _log_readonly_once()
+            return tool_error("blocked: E2E read-only mode")
         if delete_id:
             if self._manager.delete_conclusion(self._session_key, delete_id, peer=peer):
                 return json.dumps({"result": f"Conclusion {delete_id} deleted."})

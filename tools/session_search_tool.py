@@ -10,6 +10,7 @@ No LLM calls — every shape returns actual DB messages.
 
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
@@ -27,6 +28,14 @@ _HIDDEN_SESSION_SOURCES = ("kanban", "subagent", "tool")
 # Demoting — not excluding — keeps cron content reachable when it's the only match, while interactive
 # sessions always win when both match.
 _DEMOTED_SESSION_SOURCES = ("cron",)
+# Test traffic (``--source e2e``) is hidden from production recall. A test run itself
+# (HERMES_E2E_READONLY=1) may read its own sessions, so the exclusion is caller-scoped:
+# the night the continuity test planted a fact, a cron agent read that test session
+# via session_search and wrote a false fact into MEMORY.md.
+_E2E_SESSION_SOURCES = ("e2e",)
+# One test session id per line, written by e2e_common; hides sessions whose source
+# alone does not mark them (defense in depth for test-created cron/telegram sessions).
+_TEST_SESSION_DENYLIST = ("tests-e2e", "output", "test_session_ids.txt")
 # FTS rows scanned before dedup-by-lineage — well above the distinct sessions a query
 # returns, so interactive matches buried under cron hits survive the demotion pass.
 _DISCOVER_SCAN_LIMIT = 300
@@ -47,6 +56,51 @@ def _quiet(fn, default, msg, *log_args, with_exc: bool = False):
     except Exception as e:
         logging.debug(msg, *(log_args + (e,) if with_exc else log_args), exc_info=True)
         return default
+
+
+def _caller_is_e2e_readonly() -> bool:
+    """True when the CALLING process is itself a read-only E2E run."""
+    return os.environ.get("HERMES_E2E_READONLY") == "1"
+
+
+def _excluded_session_sources() -> tuple[str, ...]:
+    """Sources hidden from results: the fixed set, plus ``e2e`` for production callers.
+
+    An E2E run may read its own test sessions; a production agent never sees them.
+    """
+    if _caller_is_e2e_readonly():
+        return _HIDDEN_SESSION_SOURCES
+    return tuple(_HIDDEN_SESSION_SOURCES) + _E2E_SESSION_SOURCES
+
+
+def _denylisted_session_ids() -> set[str]:
+    """Session ids listed in ``HERMES_HOME/tests-e2e/output/test_session_ids.txt``.
+
+    Best-effort and fail-open: a missing/unreadable file hides nothing (the source
+    exclusion still applies), and a malformed path never breaks search.
+    """
+    try:
+        from hermes_constants import get_hermes_home
+        path = get_hermes_home().joinpath(*_TEST_SESSION_DENYLIST)
+        if not path.exists():
+            return set()
+        return {ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()}
+    except Exception:
+        return set()
+
+
+def _session_hidden_from_caller(db, session_id: Optional[str]) -> bool:
+    """True when *session_id* (or its lineage root) must not be served to this caller."""
+    if not session_id:
+        return False
+    denied = _denylisted_session_ids()
+    if session_id in denied:
+        return True
+    root = _resolve_lineage(db, session_id) or session_id
+    if root in denied:
+        return True
+    meta = _get_session_meta(db, root) or _get_session_meta(db, session_id)
+    return (meta.get("source") or "unknown") in _excluded_session_sources()
 
 
 def _loud(fn, log_msg, error_prefix, *log_args):
@@ -195,9 +249,11 @@ def _title_match_result(db, query: str, current_lineage_root: Optional[str]) -> 
     # /new-reset and compression-ended parents are not.
     if current_lineage_root and lineage_root == current_lineage_root and not _session_left_live_context(db, session_id):
         return None
+    if _session_hidden_from_caller(db, session_id):
+        return None
     session_meta = _quiet(lambda: db.get_session(lineage_root) or db.get_session(session_id), None,
                           "get_session failed for title match %s", session_id) or {}
-    if session_meta.get("source") in _HIDDEN_SESSION_SOURCES:
+    if session_meta.get("source") in _excluded_session_sources():
         return None
     messages = _quiet(lambda: db.get_messages(session_id), [], "get_messages failed for title match %s", session_id)
     anchor_id = messages[0].get("id") if messages else None
@@ -265,7 +321,7 @@ def _discover(db, query: str, role_filter: Optional[List[str]], limit: int, sort
     title_result = _title_match_result(db, query, current_lineage_root)
     raw_results, err = _loud(lambda: db.search_messages(
         query=query, role_filter=role_filter or ["user", "assistant"],
-        exclude_sources=list(_HIDDEN_SESSION_SOURCES), limit=_DISCOVER_SCAN_LIMIT, offset=0, sort=sort,
+        exclude_sources=list(_excluded_session_sources()), limit=_DISCOVER_SCAN_LIMIT, offset=0, sort=sort,
         fields=_DISCOVER_SEARCH_FIELDS), "FTS5 search failed: %s", "Search failed")
     if err:
         return err
@@ -288,10 +344,13 @@ def _discover(db, query: str, role_filter: Optional[List[str]], limit: int, sort
     # Current-lineage hits are skipped UNLESS the transcript left live context
     # (compression-ended, /new-reset predecessor, or an in-place compacted row on the
     # SAME session); a live delegation child (end_reason=None) stays excluded.
+    denied = _denylisted_session_ids()
     for r in raw_results:
         if len(seen_sessions) >= limit:
             break
         raw_sid, resolved_sid = r["session_id"], _resolve_lineage(db, r["session_id"])
+        if raw_sid in denied or resolved_sid in denied:
+            continue
         # Skip the current session lineage — UNLESS the hit's transcript has left live context. Three
         # sub-cases: Legacy compression rotation: the FTS hit lives in a session that itself ended with
         # end_reason='compression'. That session's content has been replaced by a summary in the
@@ -365,6 +424,8 @@ def _read_scoped(db, sid: str, profile: Optional[str]) -> str:
     transcript to any caller holding the id (#106761). The hint tells the model how to
     ask properly: ``@session:<profile>/<id>`` or ``profile=``.
     """
+    if _session_hidden_from_caller(db, sid):
+        return tool_error(f"session_id not found in this profile: {sid}", success=False)
     result = _read_session(db, sid, link_profile=profile)
     if json.loads(result).get("success") is not False or profile:
         return result
@@ -386,12 +447,13 @@ def _list_recent_sessions(db, limit: int, current_session_id: str = None, link_p
             raise RuntimeError("session database does not support bounded recent-session browse")
         sessions = bounded_list(
             limit=limit + 15,  # extra so we can skip current / compression roots
-            exclude_sources=list(_HIDDEN_SESSION_SOURCES), timeout_seconds=3.0)
+            exclude_sources=list(_excluded_session_sources()), timeout_seconds=3.0)
         current_root, has_compression_hop = (
             _resolve_to_parent(db, current_session_id) if current_session_id else (None, False))
         # Compression continuation: the root was summarised into the live child, so hide
         # it. /new-reset children carry no transcript — keep that root browsable.
         hidden = {current_session_id, current_root if has_compression_hop and current_root else None}
+        hidden |= _denylisted_session_ids()
         results = [{
             "session_id": s.get("id", ""), "link": _session_link(s.get("id", ""), link_profile),
             "title": s.get("title") or None, **{k: s.get(k, "") for k in ("source", "started_at", "last_active")},
@@ -431,9 +493,13 @@ def _scroll(db, session_id: str, around_message_id: int, window: int = 5,
     except (TypeError, ValueError):
         return tool_error("scroll requires integer around_message_id", success=False)
     window = _clamp_int(window, 5, 1, 20)
+    if _session_hidden_from_caller(db, session_id):
+        return tool_error(f"session_id not found: {session_id}", success=False)
     # Locate the anchor BEFORE the current-lineage guard (see _anchor_in_live_context).
     anchor_state = _get_message_storage_state(db, around_message_id)
     owning = (anchor_state or {}).get("session_id")
+    if owning and owning != session_id and _session_hidden_from_caller(db, owning):
+        return tool_error("scroll rejected: anchor belongs to a hidden session", success=False)
     if current_session_id and _anchor_in_live_context(db, anchor_state, owning or session_id, current_session_id):
         return tool_error("scroll rejected: anchor lives in the current session lineage (already in your active context)", success=False)
     session_meta = _get_session_meta(db, session_id)

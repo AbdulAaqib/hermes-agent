@@ -272,6 +272,11 @@ def _finalize_child_env(env: dict) -> dict:
     _inject_session_context_env(env)
     _strip_hermes_owned_pythonpath_and_runtime_markers(env)
     _apply_windows_msys_bash_env_defaults(env)
+    # E2E read-only is an AGENT-PROCESS property: propagate it explicitly so a
+    # child shell (and any nested `hermes` it spawns) also sees the gate, even
+    # when a caller passed a partial base env.
+    if os.environ.get("HERMES_E2E_READONLY") == "1":
+        env["HERMES_E2E_READONLY"] = "1"
     from agent.delegation_context import delegated_child_subprocess_env
     return delegated_child_subprocess_env(env)
 
