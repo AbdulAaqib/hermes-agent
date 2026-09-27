@@ -5113,6 +5113,23 @@ class TelegramAdapter(BasePlatformAdapter):
                 self._record_typing_cooldown(chat_id, e)
             logger.debug("[%s] Failed to send Telegram typing indicator: %s", self.name, _redact_telegram_error_text(e), exc_info=True)
 
+    async def send_media_chat_action(
+        self, chat_id: str, action: str = "upload_photo",
+        metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Native chat action while a deferred image generates (``upload_photo``).
+
+        Best-effort and never raises: the image upload follows regardless."""
+        if not self._bot:
+            return
+        try:
+            message_thread_id = self._message_thread_id_for_typing(self._metadata_thread_id(metadata))
+            await self._bot.send_chat_action(
+                chat_id=normalize_telegram_chat_id(chat_id), action=action,
+                message_thread_id=message_thread_id)
+        except Exception as e:
+            logger.debug("[%s] Failed to send Telegram %s action: %s",
+                         self.name, action, _redact_telegram_error_text(e))
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get information about a Telegram chat."""
         if not self._bot:

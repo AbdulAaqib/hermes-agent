@@ -412,6 +412,10 @@ def _apply_output_hooks(
         session_id=agent.session_id or "",
         model=agent.model,
         platform=platform,
+        # Gateway identity: lets a plugin route a deferred follow-up (e.g. a
+        # text-first image) to the same live chat via the gateway registry.
+        session_key=getattr(agent, "_gateway_session_key", None) or "",
+        chat_id=getattr(agent, "_chat_id", None) or "",
     ):
         if isinstance(_hook_result, str) and _hook_result:
             pre_transform, final_response, transformed = final_response, _hook_result, True
