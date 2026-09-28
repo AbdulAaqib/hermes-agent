@@ -409,6 +409,11 @@ class HindsightMemoryProvider(MemoryProvider):
         self._turn_counter = self._turn_index = 0
         self._session_turns: list[str] = []  # ALL turns for the session
         self._last_retained_turn_count = 0  # append-mode delta watermark
+        # Ambient persona cron sessions skip automatic retains (one paid
+        # server-side extraction per run for no durable value). Mnemosyne
+        # raises this when the operator opts cron turns back in via
+        # ``cron.auto_retain``; explicit hindsight_retain tool calls always work.
+        self._cron_auto_retain_opt_in = False
         # Server-side async retain ops still in flight: aretain_batch returns on
         # *acceptance*, not durability, so the prefetch gates on these via
         # get_operation_status (a drained local queue is not a read-after-write signal).
@@ -1165,6 +1170,21 @@ class HindsightMemoryProvider(MemoryProvider):
         }
         return _job
 
+    def _cron_auto_retain_skipped(self, session_id: str = "") -> bool:
+        """True when *session_id* (default: the active session) is an ambient
+        persona cron session and automatic retains must be suppressed.
+
+        Cron turns are not facts about the user, and each retain costs a paid
+        server-side extraction. Explicit ``hindsight_retain`` tool calls are
+        never gated here — only the automatic paths (``sync_turn`` and the
+        session-end / shutdown / session-switch buffer flushes). Opt back in by
+        setting ``_cron_auto_retain_opt_in`` (mnemosyne ``cron.auto_retain``).
+        """
+        sid = str(session_id or getattr(self, "_session_id", "") or "").strip()
+        if not sid.startswith("cron_"):
+            return False
+        return not bool(getattr(self, "_cron_auto_retain_opt_in", False))
+
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         """Enqueue a retain for the current turn (non-blocking; writer thread). Dropped
         once shutdown() fired so post-exit retains never reach aiohttp during teardown."""
@@ -1174,6 +1194,9 @@ class HindsightMemoryProvider(MemoryProvider):
             return
         if session_id:
             self._session_id = str(session_id).strip()
+        if self._cron_auto_retain_skipped():
+            logger.debug("sync_turn: skipped (cron session auto-retain disabled)")
+            return
 
         self._session_turns.append(json.dumps(self._build_turn_messages(user_content, assistant_content), ensure_ascii=False))
         self._turn_index += 1
@@ -1193,6 +1216,9 @@ class HindsightMemoryProvider(MemoryProvider):
 
     def _retain_pending(self, label: str) -> None:
         """Ship the unretained turn delta as one retain; shared by sync_turn, on_session_end and shutdown."""
+        if self._cron_auto_retain_skipped():
+            logger.debug("sync_turn: skipped %s; cron session auto-retain disabled", label)
+            return
         if len(self._session_turns) <= self._last_retained_turn_count:
             logger.debug("sync_turn: skipped %s; no new turns since last retain", label)
             return
@@ -1310,7 +1336,9 @@ class HindsightMemoryProvider(MemoryProvider):
 
         # 1. Flush buffered turns under the OLD identifiers, resolved BEFORE the
         # rotation (legacy: per-process unique; >=0.5.0: session-scoped + append).
-        if self._session_turns:
+        # Ambient cron buffers are never flushed (the active id is still the
+        # old/session-being-left one here); the rotation below still happens.
+        if self._session_turns and not self._cron_auto_retain_skipped():
             old_document_id, old_update_mode = self._resolve_retain_target(self._document_id)
             # Append APIs resume a session-scoped document, so on_session_end may
             # already have shipped the pending delta via _retain_pending(); only

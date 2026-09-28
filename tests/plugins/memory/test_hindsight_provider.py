@@ -1903,3 +1903,65 @@ class TestShutdownSafeRecall:
         with pytest.raises(ValueError):
             provider._recall("query")
         assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Cron auto-retain suppression (ambient persona turns are not facts about the
+# user). Regression for the 2026-09-28 paid retain storm: cron sessions were
+# retained from session-end / shutdown flushes even though sync_turn was gated.
+# ---------------------------------------------------------------------------
+
+
+class TestCronAutoRetainSuppression:
+    CRON = "cron_1519d964b65b_20260928_090603"
+
+    def test_sync_turn_skips_cron(self, provider_with_config):
+        p = provider_with_config(retain_async=False)
+        p.sync_turn("ambient cron line", "ambient cron reply", session_id=self.CRON)
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_not_called()
+        assert p._session_turns == []
+        assert p._session_id == self.CRON  # rotated, so later flushes also skip
+
+    def test_session_end_flush_skips_cron(self, provider_with_config):
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+        p._session_id = self.CRON
+        p._session_turns = [json.dumps([{"role": "user", "content": "ambient"}])]
+        p.on_session_end()
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_not_called()
+
+    def test_shutdown_flush_skips_cron(self, provider_with_config):
+        p = provider_with_config(retain_every_n_turns=4, retain_async=False)
+        client = p._client
+        p._session_id = self.CRON
+        p._session_turns = [json.dumps([{"role": "user", "content": "ambient"}])]
+        p.shutdown()
+        client.aretain_batch.assert_not_called()
+
+    def test_session_switch_flush_skips_cron(self, provider_with_config):
+        p = provider_with_config(retain_every_n_turns=3, retain_async=False)
+        p._session_id = self.CRON
+        p._session_turns = [json.dumps([{"role": "user", "content": "ambient"}])]
+        p.on_session_switch("20260927_103217_9ee3deb2", reset=True)
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_not_called()
+        # Rotation still happens: the next (live) session must retain normally.
+        assert p._session_id == "20260927_103217_9ee3deb2"
+        assert p._session_turns == []
+
+    def test_explicit_tool_retain_still_works_for_cron(self, provider):
+        provider._session_id = self.CRON
+        payload = json.loads(
+            provider.handle_tool_call("hindsight_retain", {"content": "Q likes tea"})
+        )
+        provider._retain_queue.join()
+        assert "error" not in payload
+        provider._client.aretain_batch.assert_called_once()
+
+    def test_opt_in_restores_automatic_retain(self, provider_with_config):
+        p = provider_with_config(retain_async=False)
+        p._cron_auto_retain_opt_in = True
+        p.sync_turn("ambient cron line", "ambient cron reply", session_id=self.CRON)
+        p._retain_queue.join()
+        p._client.aretain_batch.assert_called_once()
