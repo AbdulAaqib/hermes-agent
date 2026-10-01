@@ -143,7 +143,23 @@ def check_api_response(
     finish_reason = _derive_finish_reason(agent, response, messages)
 
     # HTTP-200 refusals are deterministic: one fallback try, else return the refusal.
-    if finish_reason == "content_filter":
+    # Plain-text refusals on the cheap route (finish_reason=stop but refusal-shaped text) take
+    # the same path so the turn retries once on the heat route via the pinned fallback chain.
+    _text_refusal = False
+    if finish_reason != "content_filter":
+        try:
+            from agent import model_router
+            from agent.turn_truncation import normalize_response_for_agent as _norm_refusal
+
+            _refusal_msg = _norm_refusal(agent, response)
+            _refusal_text = (getattr(_refusal_msg, "content", None) or "").strip()
+            if not _refusal_text:
+                _refusal_text = (agent._extract_reasoning(_refusal_msg) or "").strip()
+            _text_refusal = model_router.text_refusal_for_fallback(agent, _refusal_text) is not None
+        except Exception:
+            _text_refusal = False
+
+    if finish_reason == "content_filter" or _text_refusal:
         _rv = handle_content_policy_refusal(
             agent, response, _retry, thinking_spinner=thinking_spinner, messages=messages,
             api_messages=api_messages, api_kwargs=api_kwargs,
@@ -151,6 +167,7 @@ def check_api_response(
             api_call_count=api_call_count, effective_task_id=effective_task_id, turn_id=turn_id,
             api_request_id=api_request_id, api_start_time=api_start_time, retry_count=retry_count,
             max_retries=max_retries,
+            refusal_kind=("text_refusal" if _text_refusal else "content_filter"),
         )
         thinking_spinner = None
         active_system_prompt = _rv.active_system_prompt
