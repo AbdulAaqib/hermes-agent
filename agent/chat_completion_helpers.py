@@ -1238,12 +1238,30 @@ def _consume_ephemeral_max_output(agent):
     return ephemeral_out
 
 
+def _effective_max_tokens(agent):
+    """Caller/model max_tokens clamped to the configured output cap (``model.max_tokens`` or
+    the custom provider's ``extra_body.max_tokens``); the cap applies when nothing is set.
+
+    This is what keeps cron/oneshot main-loop requests from inheriting an enormous provider
+    default (the 402 ``You requested up to 131072 tokens`` class)."""
+    cap = getattr(agent, "_config_max_output_tokens", None)
+    value = getattr(agent, "max_tokens", None)
+    if value is None:
+        return cap
+    if cap is None:
+        return value
+    try:
+        return min(int(value), int(cap))
+    except (TypeError, ValueError):
+        return value
+
+
 def _build_anthropic_kwargs(agent, api_messages, tools_for_api, reasoning_config, request_overrides):
     ctx_len = getattr(agent, "context_compressor", None)
     ephemeral_out = _consume_ephemeral_max_output(agent)
     anthropic_kwargs = agent._get_transport().build_kwargs(model=agent.model,
         messages=agent._prepare_anthropic_messages_for_api(api_messages), tools=tools_for_api,
-        max_tokens=ephemeral_out if ephemeral_out is not None else agent.max_tokens,
+        max_tokens=ephemeral_out if ephemeral_out is not None else _effective_max_tokens(agent),
         reasoning_config=reasoning_config, is_oauth=agent._is_anthropic_oauth,
         preserve_dots=agent._anthropic_preserve_dots(),
         context_length=ctx_len.context_length if ctx_len else None,
@@ -1258,7 +1276,7 @@ def _build_anthropic_kwargs(agent, api_messages, tools_for_api, reasoning_config
 def _build_bedrock_kwargs(agent, api_messages, tools_for_api):
     # Bedrock Converse — the adapter converts messages/tools and calls boto3 directly.
     return agent._get_transport().build_kwargs(model=agent.model, messages=api_messages, tools=tools_for_api,
-        max_tokens=agent.max_tokens, region=getattr(agent, "_bedrock_region", None) or "us-east-1",
+        max_tokens=_effective_max_tokens(agent), region=getattr(agent, "_bedrock_region", None) or "us-east-1",
         guardrail_config=getattr(agent, "_bedrock_guardrail_config", None))
 
 
@@ -1285,7 +1303,7 @@ def _build_codex_kwargs(agent, api_messages, tools_for_api, reasoning_config, re
     return agent._get_transport().build_kwargs(model=agent.model,
         messages=agent._prepare_messages_for_non_vision_model(api_messages), tools=tools_for_api,
         reasoning_config=reasoning_config, session_id=getattr(agent, "session_id", None),
-        cache_scope_id=cache_scope_id, base_url=agent.base_url, max_tokens=agent.max_tokens,
+        cache_scope_id=cache_scope_id, base_url=agent.base_url, max_tokens=_effective_max_tokens(agent),
         timeout=agent._resolved_api_call_timeout(), request_overrides=request_overrides,
         provider=getattr(agent, "provider", None), is_github_responses=is_github_responses,
         is_codex_backend=is_codex_backend, is_xai_responses=is_xai_responses,
@@ -1327,7 +1345,7 @@ def _build_chat_completions_kwargs(agent, api_messages, tools_for_api, reasoning
     # providers with profiles used to bypass it).
     _common = dict(model=agent.model, messages=agent._prepare_messages_for_non_vision_model(api_messages),
         tools=tools_for_api, base_url=agent.base_url, timeout=agent._resolved_api_call_timeout(),
-        max_tokens=agent.max_tokens, ephemeral_max_output_tokens=_ephemeral_out,
+        max_tokens=_effective_max_tokens(agent), ephemeral_max_output_tokens=_ephemeral_out,
         max_tokens_param_fn=agent._max_tokens_param, reasoning_config=reasoning_config,
         request_overrides=request_overrides, session_id=getattr(agent, "session_id", None),
         cache_scope_id=cache_scope_id, ollama_num_ctx=agent._ollama_num_ctx,
@@ -2030,13 +2048,18 @@ def _iteration_summary_api_messages(agent, messages: list) -> list:
 
 def _managed_summary_call(agent, api_request_id: str, request, callback, *, retry_count: int):
     from agent import relay_llm
-    return relay_llm.execute_current(
+    from agent.main_loop_governor import record_main_loop_response, resolve_main_loop_task
+
+    response = relay_llm.execute_current(
         request, callback,
         name=str(getattr(agent, "provider", "") or "provider"), model_name=str(getattr(agent, "model", "") or ""),
         metadata={"api_mode": str(getattr(agent, "api_mode", "") or "chat_completions"),
             "api_request_id": api_request_id, "call_role": "iteration_summary", "retry_count": retry_count},
         defer_logical_completion=True,
     )
+    # This call bypasses perform_api_call's accounting, so the governor is its only ledger writer.
+    record_main_loop_response(agent, response, resolve_main_loop_task(agent), write_session=True)
+    return response
 
 
 def _summary_text(agent, response, **normalize_kwargs) -> str:
@@ -2063,7 +2086,7 @@ def _codex_summary_attempt(agent, api_messages: list, api_request_id: str):
 def _anthropic_summary_attempt(agent, api_messages: list, api_request_id: str):
     def _attempt(retry_count: int) -> str:
         ant_kw = agent._get_transport().build_kwargs(
-            model=agent.model, messages=api_messages, tools=None, max_tokens=agent.max_tokens,
+            model=agent.model, messages=api_messages, tools=None, max_tokens=_effective_max_tokens(agent),
             reasoning_config=agent.reasoning_config, is_oauth=agent._is_anthropic_oauth,
             preserve_dots=agent._anthropic_preserve_dots(), base_url=getattr(agent, "_anthropic_base_url", None))
         ant_kw = _merge_nous_portal_messages_extra_body(agent, ant_kw)

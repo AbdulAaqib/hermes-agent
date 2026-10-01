@@ -728,8 +728,20 @@ def _record_review_usage_to_parent(parent_agent: Any, usage: Dict[str, Any]) -> 
         session_db = getattr(parent_agent, "_session_db", None)
         session_id = getattr(parent_agent, "session_id", None)
         counts = {key: int(usage.get(key) or 0) for key in _USAGE_COUNTERS}
-        if session_db is None or not session_id or not any(counts.values()):
-            return  # no DB, or the fork made no successful API calls (e.g. failed at spawn)
+        if not any(counts.values()):
+            return  # the fork made no successful API calls (e.g. failed at spawn)
+        from agent import call_governor
+
+        call_governor.record(
+            "background_review", model=usage.get("model"), provider=usage.get("provider"),
+            prompt_tokens=counts.get("input_tokens", 0), completion_tokens=counts.get("output_tokens", 0),
+            cache_read_tokens=counts.get("cache_read_tokens", 0),
+            cache_write_tokens=counts.get("cache_write_tokens", 0),
+            reasoning_tokens=counts.get("reasoning_tokens", 0),
+            cost_usd=usage.get("estimated_cost_usd"), session_id=str(session_id or ""),
+        )
+        if session_db is None or not session_id:
+            return  # no DB: day roll-up is still recorded above
         session_db.record_auxiliary_usage(
             session_id, task="background_review", model=usage.get("model"),
             billing_provider=usage.get("provider"), billing_base_url=usage.get("base_url"),

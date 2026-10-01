@@ -786,6 +786,19 @@ class AIAgent(
         )
         from tools.thread_context import propagate_context_to_thread
 
+        # Governor cap (2/day by default): automatic reviews only; explicit /refine is user-requested.
+        if not explicit:
+            try:
+                from agent.call_governor import admit
+
+                if not admit(
+                    "background_review", session_id=str(getattr(self, "session_id", "") or ""),
+                    platform=str(getattr(self, "platform", "") or ""),
+                ).allow:
+                    return
+            except Exception:
+                logger.debug("background review governor admit failed (fail-open)", exc_info=True)
+
         review_run = prepare_background_review_run(self)
         if review_run is None:
             return

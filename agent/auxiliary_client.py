@@ -6150,6 +6150,15 @@ def _validate_llm_response(
         raise RuntimeError(f"Auxiliary {task or 'call'}: LLM returned None response")
     from agent.aux_accounting import record_aux_usage
     record_aux_usage(response, task, provider=provider, base_url=base_url)
+    # Cost ledger: every successful aux response rolls up under its task (the session table is
+    # written by record_aux_usage above, so pass no session handle here to avoid double-counting).
+    try:
+        from agent import call_governor
+
+        call_governor.record_response(
+            response, effective_aux_task(task), provider=provider, base_url=base_url)
+    except Exception:
+        logger.debug("call_governor: aux response recording failed (non-fatal)", exc_info=True)
     # Adapter SimpleNamespace responses are fine — they have .choices[0].message.
     try:
         choices = response.choices
@@ -7167,6 +7176,42 @@ def _stamp_latency_once(latency_info: Optional[Dict[str, int]], key: str, starte
         latency_info[key] = _elapsed_ms(started_at)
 
 
+def _caller_module_name() -> str:
+    """Cheap ``__name__`` of the first frame outside this module (unlabelled-call attribution)."""
+    import inspect
+
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back if frame is not None else None
+        this_module = __name__
+        while frame is not None:
+            module = str(frame.f_globals.get("__name__", "") or "")
+            if module and module != this_module:
+                return module
+            frame = frame.f_back
+    finally:
+        del frame
+    return "unknown"
+
+
+def effective_aux_task(task: Optional[str]) -> str:
+    """Task label used for governor accounting: explicit, else ``unlabelled:<caller module>``."""
+    if task:
+        return str(task)
+    return f"unlabelled:{_caller_module_name()}"
+
+
+def _governor_admit(task: Optional[str], *, session_id: str = "", platform: str = "") -> str:
+    """Admit an auxiliary call; raises :class:`CallDenied` when the governor refuses it."""
+    from agent.call_governor import CallDenied, admit
+
+    label = effective_aux_task(task)
+    decision = admit(label, session_id=session_id, platform=platform)
+    if not decision.allow:
+        raise CallDenied(label, decision.reason)
+    return label
+
+
 @_relay_auxiliary_call
 def call_llm(
     task: str = None, *, provider: str = None, model: str = None, base_url: str = None,
@@ -7178,6 +7223,7 @@ def call_llm(
     latency_info: Optional[Dict[str, int]] = None,
 ) -> Any:
     """Run an auxiliary LLM request, applying the configured task limit."""
+    _governor_admit(task)
     queue_started_at = time.monotonic()
     semaphore = _acquire_sync_aux_semaphore(task)
     if semaphore is not None:
@@ -7476,6 +7522,7 @@ async def async_call_llm(
     route_info: Optional[Dict[str, str]] = None,
 ) -> Any:
     """Run an asynchronous auxiliary LLM request under the configured limit."""
+    _governor_admit(task)
     semaphore = _acquire_async_aux_semaphore(task)
     if semaphore is not None:
         await semaphore.acquire()
