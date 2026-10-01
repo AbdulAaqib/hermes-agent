@@ -288,6 +288,43 @@ def _custom_provider_extra_body_for_agent(
     return fallback
 
 
+def _resolve_configured_max_output_tokens(
+    agent, _agent_cfg: Dict[str, Any], custom_providers: List[Dict[str, Any]],
+) -> Optional[int]:
+    """Configured output-token cap for every main-loop request, or None.
+
+    Precedence: an explicit caller ``max_tokens`` disables the cap (the caller owns it),
+    else ``model.max_tokens``, else the active custom provider's ``extra_body.max_tokens``.
+    This is what keeps cron/oneshot requests from asking for an enormous provider default
+    (the 402 ``You requested up to 131072 tokens`` class) when the operator set a cap.
+    """
+    try:
+        if getattr(agent, "max_tokens", None) is not None:
+            return None
+        model_cfg = _agent_cfg.get("model") if isinstance(_agent_cfg, dict) else None
+        if isinstance(model_cfg, dict):
+            cap = _positive_int(model_cfg.get("max_tokens"))
+            if cap is not None:
+                return cap
+        extra_body = _custom_provider_extra_body_for_agent(
+            provider=agent.provider, model=agent.model, base_url=agent.base_url,
+            custom_providers=custom_providers,
+        )
+        if isinstance(extra_body, dict):
+            return _positive_int(extra_body.get("max_tokens"))
+    except Exception:
+        logger.debug("output-cap resolution failed; leaving uncapped", exc_info=True)
+    return None
+
+
+def _positive_int(value: Any) -> Optional[int]:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 def _merge_custom_provider_extra_body(agent, custom_providers: List[Dict[str, Any]]) -> None:
     extra_body = _custom_provider_extra_body_for_agent(
         provider=agent.provider, model=agent.model, base_url=agent.base_url,
@@ -1708,6 +1745,9 @@ def _resolve_context_length(agent, _agent_cfg, base_url):
     # Reused by _check_compression_model_feasibility (aux compression model detection).
     agent._custom_providers = _custom_providers
     _merge_custom_provider_extra_body(agent, _custom_providers)
+    agent._config_max_output_tokens = _resolve_configured_max_output_tokens(
+        agent, _agent_cfg, _custom_providers
+    )
 
     if _config_context_length is None and _custom_providers:
         with suppress(Exception):

@@ -119,6 +119,9 @@ def perform_api_call(
     _model_request_active = getattr(agent, "_model_request_active", None)
     _redirect_lock = getattr(agent, "_pending_redirect_lock", None)
     _bracket = nullcontext() if _redirect_lock is None else _redirect_lock
+    from agent.main_loop_governor import record_main_loop_response, resolve_main_loop_task
+
+    _governor_task = resolve_main_loop_task(agent)
     with _bracket:
         if _model_request_active is not None:
             _model_request_active.set()
@@ -138,6 +141,8 @@ def perform_api_call(
                 bool(agent._pending_redirect) if _redirect_lock is not None
                 else agent._has_pending_redirect()
             )
+    if not _redirect_crossed_response and response is not None:
+        record_main_loop_response(agent, response, _governor_task)
     if _redirect_crossed_response:
         # Response and redirect can cross threads: discard the now-stale
         # response and rebuild from the correction rather than lose it.
