@@ -495,7 +495,7 @@ _PER_TURN_RESET_STATE: Tuple[Tuple[str, Any], ...] = (
     ("_tool_guardrail_halt_decision", None), ("_vision_supported", True),
     ("_iteration_budget_warning_injected", False),
     ("_run_budget_wrapup_injected", False), ("_verification_stop_nudges", 0),
-    ("_pre_verify_nudges", 0),
+    ("_pre_verify_nudges", 0), ("_model_router_refusal_retried", False),
 )
 
 
@@ -898,6 +898,21 @@ def build_turn_context(
     from tools.skill_provenance import set_review_attended
     set_review_attended(getattr(agent, "_review_attended", False))
     agent._restore_primary_runtime()
+    # Heat-routed model selection (agent/model_router.py): pick the cheap subscription route
+    # for non-explicit turns and the OpenRouter "heat" route for explicit ones. Runs before the
+    # system prompt/compaction so the compressor sees the routed model's context window. Fail-open.
+    try:
+        from agent import model_router
+
+        _route_decision = model_router.maybe_route_turn(
+            agent, user_message=user_message,
+            platform=getattr(agent, "platform", None) or "",
+            session_id=agent.session_id or "",
+        )
+        if _route_decision:
+            agent._model_router_last_route = _route_decision.get("route", "")
+    except Exception:
+        logger.debug("model_router: per-turn routing skipped", exc_info=True)
     _publish_runtime_main(agent)
     _refresh_mcp_tools_between_turns(agent)
 

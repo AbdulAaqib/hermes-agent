@@ -1967,6 +1967,17 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
             agent._provider_fallback_active = True
             agent._provider_fallback_route = (str(fb_model), str(fb_provider))
             logger.info("Fallback activated: %s → %s (%s)", old_model, fb_model, fb_provider)
+            # model_router bookkeeping (no-op unless heat routing is active): count/log the
+            # error/quota fallback with the per-turn log line format.
+            try:
+                from agent import model_router
+
+                _reason_text = str(getattr(reason, "value", reason) or "").lower()
+                model_router.note_route_fallback(
+                    agent, "quota" if ("rate" in _reason_text or "quota" in _reason_text) else "error",
+                )
+            except Exception:
+                pass
             # The stale-call streak measured the OLD provider; carrying it over would
             # short-circuit the fresh fallback before its first stream attempt.
             _reset_stale_streak(agent)

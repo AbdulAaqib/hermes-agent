@@ -553,10 +553,13 @@ def handle_content_policy_refusal(
     messages: List[Dict[str, Any]], api_messages: Any, api_kwargs: Any, active_system_prompt: Any,
     conversation_history: Any, api_call_count: int, effective_task_id: Any, turn_id: Any,
     api_request_id: Any, api_start_time: float, retry_count: int, max_retries: int,
+    refusal_kind: str = "content_filter",
 ) -> RefusalVerdict:
-    """HTTP-200 refusal (``finish_reason`` ``content_filter`` / ``guardrail_intervened``).
-    Deterministic for the unchanged prompt — never retried: one configured-fallback try,
-    else surface the refusal (explanation may live only in the reasoning channel)."""
+    """HTTP-200 refusal: either the provider signalled it (``finish_reason`` ``content_filter`` /
+    ``guardrail_intervened``) or the cheap route emitted a refusal-shaped plain-text reply
+    (``refusal_kind="text_refusal"``, decided by ``agent.model_router``). Deterministic for the
+    unchanged prompt — never retried: one configured-fallback try, else surface the refusal
+    (explanation may live only in the reasoning channel)."""
     from agent.conversation_loop import (
         _CONTENT_POLICY_RECOVERY_HINT, _arm_fallback_restart, _content_policy_blocked_result
     )
@@ -570,7 +573,7 @@ def handle_content_policy_refusal(
         task_id=effective_task_id, turn_id=turn_id, api_request_id=api_request_id,
         api_call_count=api_call_count, api_start_time=api_start_time, api_kwargs=api_kwargs,
         error_type="ContentPolicyBlocked",
-        error_message=_refusal_text or "model declined to respond (content_filter)",
+        error_message=_refusal_text or f"model declined to respond ({refusal_kind})",
         status_code=None, retry_count=retry_count, max_retries=max_retries, retryable=False,
         reason=FailoverReason.content_policy_blocked.value,
     )
@@ -585,8 +588,8 @@ def handle_content_policy_refusal(
     agent._flush_status_buffer()
     _refusal_log = _refusal_text[:500] + "..." if len(_refusal_text) > 500 else _refusal_text
     logger.warning(
-        "%sModel declined to respond (finish_reason=content_filter). model=%s provider=%s refusal=%s",
-        agent.log_prefix, agent.model, agent.provider,
+        "%sModel declined to respond (refusal_kind=%s). model=%s provider=%s refusal=%s",
+        agent.log_prefix, refusal_kind, agent.model, agent.provider,
         _refusal_log or "(no text)",
     )
     agent._emit_status("⚠️ The model declined to respond to this request (safety refusal).")
