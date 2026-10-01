@@ -1260,6 +1260,26 @@ def _resolve_job_workdir(job: dict, job_id: str) -> Optional[str]:
     return workdir
 
 
+def _record_preflight_script_failure(job_id: str) -> None:
+    """Count a failed pre-run script toward the job's ``failure_streak``.
+
+    A fail-closed gate skip returns ``success=True`` (a silent run, no delivery), so
+    ``mark_job_run`` would reset the streak and a persistently broken gate script would
+    stay invisible. Bumping the counter here lets the existing ``_failure_streak_nudge``
+    flag it once the streak crosses ``cron.failure_nudge_threshold``. Best-effort: a
+    bookkeeping failure must never turn a gate skip into a crash.
+    """
+    try:
+        from cron.jobs import update_job
+        from cron.jobs import get_job
+
+        _job = get_job(job_id) or {}
+        streak = int(_job.get("failure_streak") or 0) + 1
+        update_job(job_id, {"failure_streak": streak})
+    except Exception:
+        logger.debug("Job '%s': could not record preflight script failure", job_id, exc_info=True)
+
+
 def _run_no_agent_job(
     job: dict, job_id: str, job_name: str, cancel_event,
 ) -> tuple[bool, str, str, Optional[str]]:
@@ -2025,6 +2045,27 @@ def _prepare_job_prompt(
                 "Script gate returned `wakeAgent=false` — agent skipped.\n"
             )
             return (True, silent_doc, SILENT_MARKER, None), None
+        if not _ran_ok:
+            # Fail CLOSED: a pre-run script that failed (non-zero exit, exception, timeout)
+            # carries no trustworthy data, so an agent run would inject a "Script Error"
+            # prompt and pay for an LLM turn. Skip the run, log a WARNING with the job id,
+            # and count it in the job's failure_streak so the existing streak nudge notices.
+            # no_agent jobs keep their own behaviour (separate branch above).
+            logger.warning(
+                "Job '%s' (ID: %s): pre-run script failed — skipping agent run (fail-closed). %s",
+                job_name, job_id, str(_script_output or "").strip()[:500],
+            )
+            _record_preflight_script_failure(job_id)
+            failure_doc = (
+                f"# Cron Job: {job_name}\n\n"
+                f"**Job ID:** {job_id}\n"
+                f"**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "**Status:** script failed (fail-closed)\n\n"
+                "The pre-run script failed (non-zero exit, exception, or timeout), so the "
+                "agent was NOT run — a failed gate must not cost an LLM turn.\n\n"
+                f"**Script error:** {str(_script_output or '').strip()[:2000]}\n"
+            )
+            return (True, failure_doc, SILENT_MARKER, None), None
 
     try:
         prompt = _build_job_prompt(job, prerun_script=prerun_script, extra_prompt=extra_prompt)

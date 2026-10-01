@@ -1792,6 +1792,56 @@ class TestRunJobWakeGate:
         assert "Script gate returned `wakeAgent=false`" in doc
         agent_cls.assert_not_called()
 
+    def test_script_failure_skips_agent_and_is_fail_closed(self, caplog):
+        """A pre-run script that FAILED (non-zero exit / exception / timeout) must not
+        wake the agent. The run is a silent skip, and the failure is counted in the
+        job's failure_streak so a persistently broken gate stays visible."""
+        from cron.scheduler import SILENT_MARKER
+        import cron.scheduler as scheduler
+        from cron import scheduler_script as sched_script
+        from cron import jobs as jobs_mod
+
+        recorded = {}
+
+        def _fake_update(job_id, updates):
+            recorded.setdefault(job_id, {}).update(updates)
+            return {"id": job_id, **updates}
+
+        with patch.object(sched_script, "_run_job_script",
+                          return_value=(False, "Script exited with code 1")), \
+             patch.object(jobs_mod, "get_job", return_value={"id": "job_fail", "failure_streak": 2}), \
+             patch.object(jobs_mod, "update_job", side_effect=_fake_update), \
+             patch("run_agent.AIAgent") as agent_cls, \
+             caplog.at_level(logging.WARNING, logger="cron.scheduler"):
+            success, doc, final, err = scheduler.run_job(self._make_job(name="fail"))
+
+        assert success is True
+        assert final == SILENT_MARKER
+        assert "script failed (fail-closed)" in doc
+        assert "Script exited with code 1" in doc
+        agent_cls.assert_not_called()
+        # failure_streak counted (2 -> 3); never reset.
+        assert recorded["job_fail"]["failure_streak"] == 3
+        assert "pre-run script failed" in caplog.text
+
+    def test_script_failure_no_agent_job_still_alerts(self):
+        """no_agent jobs keep their own behaviour: a failed script delivers the error
+        alert (it is not turned into a silent fail-closed skip)."""
+        import cron.scheduler as scheduler
+        from cron import scheduler_script as sched_script
+        from cron.scheduler import _run_no_agent_job
+
+        job = self._make_job(name="noagent")
+        job["no_agent"] = True
+        with patch.object(sched_script, "_run_job_script",
+                          return_value=(False, "Script exited with code 1")):
+            success, doc, final, err = _run_no_agent_job(
+                job, "job_noagent", "noagent", None)
+
+        assert success is False
+        assert "script failed" in doc.lower()
+        assert err == "Script exited with code 1"
+
     def test_wake_true_runs_agent_with_injected_output(self):
         """When the script returns {wakeAgent: true, data: ...}, the agent is
         invoked and the data line still shows up in the prompt."""
