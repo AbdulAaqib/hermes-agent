@@ -202,6 +202,36 @@ class TestConcludeToolDispatch:
         assert session.add_message.call_args_list[1].args == ("assistant", "Visible answer")
 
 
+    def _sync_provider(self):
+        provider = HonchoMemoryProvider()
+        provider._session_key = "telegram:123"
+        provider._manager = MagicMock()
+        provider._cron_skipped = False
+        provider._config = SimpleNamespace(message_max_chars=25000)
+        session = MagicMock()
+        provider._manager.get_or_create.return_value = session
+        return provider, session
+
+    def test_sync_turn_always_disables_assistant_reasoning(self):
+        provider, session = self._sync_provider()
+        provider.sync_turn("remember the meeting tomorrow", "sure, noted")
+        provider._sync_thread.join(timeout=1.0)
+
+        user_call, asst_call = session.add_message.call_args_list
+        assert asst_call.kwargs["configuration"] == {"reasoning": {"enabled": False}}
+        # Durable user turn keeps derivation on.
+        assert user_call.kwargs["configuration"] is None
+
+    def test_sync_turn_disables_non_durable_user_reasoning(self):
+        provider, session = self._sync_provider()
+        provider.sync_turn("lol", "haha", disable_user_reasoning=True)
+        provider._sync_thread.join(timeout=1.0)
+
+        user_call, asst_call = session.add_message.call_args_list
+        assert user_call.kwargs["configuration"] == {"reasoning": {"enabled": False}}
+        assert asst_call.kwargs["configuration"] == {"reasoning": {"enabled": False}}
+
+
 # ---------------------------------------------------------------------------
 # Message chunking
 # ---------------------------------------------------------------------------

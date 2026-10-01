@@ -32,6 +32,10 @@ from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
 
+# Per-message Honcho configuration: disable server-side reasoning derivation.
+# The SDK's ``peer.message(configuration=...)`` accepts this dict (honcho/peer.py).
+_REASONING_OFF = {"reasoning": {"enabled": False}}
+
 # Failure hook for the composite-provider dead-letter queue (mnemosyne).
 # Signature: hook(payload: dict) -> None; payload = {"kind": "honcho_dream", "session_key": str}.
 _DREAM_FAILURE_HOOK = None
@@ -826,11 +830,17 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
     def sync_turn(
         self, user_content: str, assistant_content: str, *, session_id: str = "",
         turn_author: Optional[Dict[str, Any]] = None,
+        disable_user_reasoning: bool = False,
     ) -> None:
         """Record the conversation turn in Honcho (non-blocking), chunking messages that
         exceed the Honcho API limit. Honors saveMessages: false. ``turn_author`` names who wrote
         the user side. The ``on_turn_start`` stash is the fallback for callers that never pass it.
-        A bot author's turn is written into that bot's own a2a session, never the human's."""
+        A bot author's turn is written into that bot's own a2a session, never the human's.
+
+        ``disable_user_reasoning`` turns off server-side reasoning derivation for the
+        user side of this turn only — used for non-durable (banter) turns so they are
+        stored and searchable without being mined. Assistant messages are Asuna's own
+        words and ALWAYS have derivation disabled; durable user turns keep it on."""
         if not self._writes_enabled():
             return
         if _is_internal_gateway_turn(user_content):
@@ -878,10 +888,16 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
             # and filter turns (author peer, platform, turn number).
             turn_meta: dict[str, Any] = {"platform": self._platform, "turn": self._turn_count}
             user_meta = {**turn_meta, "author_peer_id": author_peer_id} if author_peer_id else turn_meta
+            # Assistant messages are Asuna's own words — never derive reasoning
+            # from them. Non-durable user turns are stored but not mined either.
+            assistant_config = _REASONING_OFF
+            user_config = _REASONING_OFF if disable_user_reasoning else None
             for chunk in self._chunk_message(clean_user_content, msg_limit) if clean_user_content else ():
-                session.add_message("user", chunk, author_peer_id=author_peer_id, metadata=user_meta)
+                session.add_message("user", chunk, author_peer_id=author_peer_id,
+                                    metadata=user_meta, configuration=user_config)
             for chunk in self._chunk_message(clean_assistant_content, msg_limit) if clean_assistant_content else ():
-                session.add_message("assistant", chunk, metadata=turn_meta)
+                session.add_message("assistant", chunk, metadata=turn_meta,
+                                    configuration=assistant_config)
             # save() (not _flush_session) so writeFrequency batching is honored.
             self._manager.save(session)
 

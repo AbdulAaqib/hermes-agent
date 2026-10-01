@@ -512,14 +512,22 @@ class HonchoSessionManager(SessionAuthMixin, SessionPeersMixin, SessionContextMi
             for m in new_messages:
                 # Turn metadata (author peer, platform, turn number) rides with the message so
                 # Honcho-side tooling can attribute and filter turns (SDK: peer.message(metadata=)).
+                # ``configuration`` carries per-message derivation switches (assistant always off;
+                # non-durable user turns off) through to the SDK.
                 meta = m.get("metadata")
+                config = m.get("configuration")
+                extra = {}
+                if meta:
+                    extra["metadata"] = meta
+                if config:
+                    extra["configuration"] = config
                 if m["role"] != "user":
-                    honcho_messages.append(assistant_peer.message(m["content"], **({"metadata": meta} if meta else {})))
+                    honcho_messages.append(assistant_peer.message(m["content"], **extra))
                     continue
                 author_peer_id = m.get("author_peer_id")
                 peer = (self._author_peer_for_session(honcho_session, session.honcho_session_id, author_peer_id)
                         if author_peer_id else user_peer)
-                honcho_messages.append(peer.message(m["content"], **({"metadata": meta} if meta else {})))
+                honcho_messages.append(peer.message(m["content"], **extra))
             honcho_session.add_messages(honcho_messages)
             return len(honcho_messages)
 
