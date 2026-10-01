@@ -797,3 +797,28 @@ class TestConcurrentFlushSession:
         mgr._flush_session_locked = nested
         assert mgr._flush_session(session) is True
         assert len(calls) == 2
+
+    def test_flush_forwards_message_configuration_to_sdk(self, make_manager):
+        """Per-message derivation switches ride the local cache into peer.message()."""
+        mgr = make_manager(write_frequency="turn")
+        session = _make_session(key="cfg")
+        off = {"reasoning": {"enabled": False}}
+        session.add_message("user", "hello", configuration=off)
+        session.add_message("assistant", "hi", configuration=off)
+        self._wire_remote(mgr, session, lambda _messages: None)
+
+        assert mgr._flush_session(session) is True
+        user_peer = mgr._peers_cache[session.user_peer_id]
+        assistant_peer = mgr._peers_cache[session.assistant_peer_id]
+        assert user_peer.message.call_args.kwargs["configuration"] == off
+        assert assistant_peer.message.call_args.kwargs["configuration"] == off
+
+    def test_flush_leaves_configuration_off_when_absent(self, make_manager):
+        mgr = make_manager(write_frequency="turn")
+        session = _make_session(key="cfg2")
+        session.add_message("user", "hello")
+        self._wire_remote(mgr, session, lambda _messages: None)
+
+        assert mgr._flush_session(session) is True
+        user_peer = mgr._peers_cache[session.user_peer_id]
+        assert "configuration" not in user_peer.message.call_args.kwargs
