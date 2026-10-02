@@ -1345,6 +1345,11 @@ def _apply_agent_section(agent, _agent_cfg):
     # of each other (gates in agent/system_prompt.py).
     agent._tool_use_enforcement = _agent_section.get("tool_use_enforcement", "auto")
     agent._execution_guidance = _agent_section.get("execution_guidance", "auto")
+    # Persona mode (messaging persona surfaces): load HERMES_HOME/AGENTS.md as
+    # the operating brief regardless of cwd, and drop the engineering
+    # discipline blocks (mandatory_tool_use / act_dont_ask / verification) that
+    # read as assistant scaffolding in a chat. Off = byte-identical to before.
+    agent._persona_mode = bool(_agent_section.get("persona_mode", False))
 
     # Wall-clock run budget from config — only when the constructor arg was not given.
     if agent.run_budget_seconds is None:
