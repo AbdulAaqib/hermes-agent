@@ -48,6 +48,7 @@ logger = logging.getLogger("agent.model_router")
 
 STATE_RELPATH = Path("plugins") / "lewd_lens" / "state.json"
 CLASSIFIER_RELPATH = Path("plugins") / "lewd_lens" / "classifier.py"
+NSFW_MODE_RELPATH = Path("plugins") / "lewd_lens" / "nsfw_mode.py"
 JOBS_RELPATH = Path("cron") / "jobs.json"
 
 # Mirrors prompt_builder: the rung resets to the cozy base after an hour idle.
@@ -88,6 +89,7 @@ _CONFIG_CACHE: Tuple[float, int, Dict[str, Any]] = (0.0, 0, {})
 _RESOLVE_CACHE: Dict[Tuple[str, str], Tuple[float, Optional[Dict[str, Any]]]] = {}
 _RESOLVE_TTL_S = 300.0
 _CLASSIFIER_CACHE: Tuple[float, Optional[Any]] = (0.0, None)
+_NSFW_CACHE: Tuple[float, Optional[Any]] = (0.0, None)
 _FALLBACK_COUNTS: Dict[str, int] = {}
 
 
@@ -223,6 +225,46 @@ def _load_classifier():
         mod = None
     _CLASSIFIER_CACHE = (mtime, mod)
     return mod
+
+
+def _load_nsfw_mode():
+    """The lewd_lens NSFW-mode module (loaded from the plugin dir by path), or None.
+
+    Mirrors ``_load_classifier`` so the router and the plugin can never drift on the
+    unlock/expiry rules. Cache is keyed on the file's mtime."""
+    global _NSFW_CACHE
+    try:
+        path = _home() / NSFW_MODE_RELPATH
+        if not path.exists():
+            return None
+        mtime = path.stat().st_mtime
+    except Exception:
+        return None
+    if _NSFW_CACHE[1] is not None and _NSFW_CACHE[0] == mtime:
+        return _NSFW_CACHE[1]
+    mod = None
+    try:
+        spec = importlib.util.spec_from_file_location("lewd_lens_model_router_nsfw", path)
+        if spec is not None:
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = mod
+            spec.loader.exec_module(mod)
+    except Exception:
+        mod = None
+    _NSFW_CACHE = (mtime, mod)
+    return mod
+
+
+def nsfw_is_on(now: Optional[float] = None) -> bool:
+    """True while the NSFW unlock is live. Default OFF: a missing mode module or a
+    read failure means the heat route and any rung above 2 stay unavailable."""
+    mod = _load_nsfw_mode()
+    if mod is None or not hasattr(mod, "is_on"):
+        return False
+    try:
+        return bool(mod.is_on(now))
+    except Exception:
+        return False
 
 
 def message_is_heat(text: Any) -> bool:
@@ -437,6 +479,14 @@ def maybe_route_turn(
     else:
         cron_allow = False
         msg_heat = message_is_heat(user_message)
+
+    # NSFW opt-in (Phase 6): with the unlock off the heat route is unreachable —
+    # the persisted rung is capped at 2 and the incoming text is never treated as
+    # heat. Commands only (/spicy), no phrase detection. refusal_fallback is
+    # untouched: it still retries a cheap-route refusal on the heat route.
+    if not nsfw_is_on():
+        rung = min(rung, 2)
+        msg_heat = False
 
     route = decide_route(
         config, rung=rung, msg_heat=msg_heat,

@@ -14,6 +14,10 @@ import pytest
 
 from agent import model_router
 
+# Captured before the autouse default-on fixture swaps the module attribute, so
+# the real loader/wrapper can be exercised by the opt-in tests below.
+_REAL_NSFW_IS_ON = model_router.nsfw_is_on
+
 
 BASE_CONFIG = {
     "enabled": True,
@@ -45,6 +49,13 @@ def cfg(monkeypatch):
     monkeypatch.setattr(model_router, "get_config", lambda: dict(BASE_CONFIG))
     monkeypatch.setattr(model_router, "enabled", lambda: True)
     return BASE_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def _nsfw_on_by_default(monkeypatch):
+    """Phase 6: these tests predate the NSFW opt-in. Default the mode ON so the
+    rung/heat policy stays under test; the off-gate has its own cases below."""
+    monkeypatch.setattr(model_router, "nsfw_is_on", lambda now=None: True)
 
 
 # -- pure policy -----------------------------------------------------------------
@@ -274,3 +285,63 @@ def test_fallback_counting_after_route(monkeypatch, cfg):
     other = FakeAgent()
     model_router.note_route_fallback(other, "error")
     assert model_router.fallback_counts() == {"quota": 1}
+
+
+# -- NSFW opt-in gate (Phase 6) --------------------------------------------------
+
+
+def _write_nsfw(tmp_path, body):
+    plug = tmp_path / "plugins" / "lewd_lens"
+    plug.mkdir(parents=True, exist_ok=True)
+    (plug / "nsfw_mode.py").write_text(body)
+    return plug
+
+
+def test_nsfw_is_on_reads_plugin_mode_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(model_router, "nsfw_is_on", _REAL_NSFW_IS_ON)
+    model_router._NSFW_CACHE = (0.0, None)
+    plug = _write_nsfw(tmp_path, "MODE = 'on'\ndef is_on(now=None):\n    return MODE == 'on'\n")
+    monkeypatch.setattr(model_router, "_home", lambda: tmp_path)
+    assert model_router.nsfw_is_on() is True
+    (plug / "nsfw_mode.py").write_text("MODE = 'off'\ndef is_on(now=None):\n    return MODE == 'on'\n")
+    model_router._NSFW_CACHE = (0.0, None)
+    assert model_router.nsfw_is_on() is False
+
+
+def test_nsfw_is_on_defaults_off_when_absent(monkeypatch, tmp_path):
+    monkeypatch.setattr(model_router, "nsfw_is_on", _REAL_NSFW_IS_ON)
+    model_router._NSFW_CACHE = (0.0, None)
+    monkeypatch.setattr(model_router, "_home", lambda: tmp_path)
+    assert model_router.nsfw_is_on() is False
+
+
+def test_maybe_route_turn_off_caps_rung_and_heat(monkeypatch, cfg):
+    monkeypatch.setattr(model_router, "nsfw_is_on", lambda now=None: False)
+    monkeypatch.setattr(model_router, "current_rung", lambda now=None: 4)
+    monkeypatch.setattr(model_router, "message_is_heat", lambda text: True)
+    monkeypatch.setattr(model_router, "_resolve_target", lambda p, m: {
+        "api_key": "k", "base_url": "https://opencode.ai/zen/go/v1",
+        "api_mode": "chat_completions"})
+    swaps = []
+    monkeypatch.setattr(
+        model_router, "_apply_swap",
+        lambda agent, provider, model, resolved: swaps.append((provider, model)) or True,
+    )
+    agent = FakeAgent()  # starts on the heat route
+    decision = model_router.maybe_route_turn(agent, user_message="explicit request")
+    assert decision["route"] == "cheap"
+    assert decision["rung"] == 2 and decision["msg_heat"] is False
+    assert swaps == [("opencode-go", "deepseek-v4.1-flash")]
+
+
+def test_maybe_route_turn_on_keeps_heat(monkeypatch, cfg):
+    monkeypatch.setattr(model_router, "nsfw_is_on", lambda now=None: True)
+    monkeypatch.setattr(model_router, "current_rung", lambda now=None: 3)
+    monkeypatch.setattr(model_router, "message_is_heat", lambda text: False)
+    monkeypatch.setattr(model_router, "_resolve_target", lambda p, m: {
+        "api_key": "k", "base_url": "https://openrouter.ai/api/v1",
+        "api_mode": "chat_completions"})
+    monkeypatch.setattr(model_router, "_apply_swap", lambda *a, **k: True)
+    agent = FakeAgent(provider="opencode-go", model="deepseek-v4.1-flash")
+    decision = model_router.maybe_route_turn(agent, user_message="so... want me")
+    assert decision["route"] == "heat" and decision["rung"] == 3
