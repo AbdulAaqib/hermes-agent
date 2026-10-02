@@ -1541,6 +1541,26 @@ def _load_agents_md(cwd_path: Path, context_length: Optional[int] = None) -> str
                              read_path=str(cwd_resolved / "AGENTS.md"))
 
 
+def _load_persona_context(home: Path, context_length: Optional[int] = None) -> str:
+    """HERMES_HOME operating brief for persona surfaces (AGENTS.md family).
+
+    Gateway persona sessions resolve their cwd to ``Path.home()`` via the
+    ``terminal.cwd`` placeholder, so the HERMES_HOME AGENTS.md (texting voice,
+    media rules, register mirroring) is never discovered by the cwd chain.
+    Loaded explicitly from the agent's own home; first name wins.
+    """
+    if home is None:
+        return ""
+    home = Path(home)
+    for name in ("AGENTS.override.md", "AGENTS.md", "agents.md", "CLAUDE.md"):
+        candidate = home / name
+        content = _read_context_file(candidate)
+        if content:
+            label = "AGENTS.md" if name != "CLAUDE.md" else name
+            return _context_section(content, label, label, candidate, context_length)
+    return ""
+
+
 def _load_claude_md(cwd_path: Path, context_length: Optional[int] = None) -> str:
     """CLAUDE.md / claude.md — cwd only."""
     for name in ("CLAUDE.md", "claude.md"):
@@ -1569,12 +1589,16 @@ def _load_cursorrules(cwd_path: Path, context_length: Optional[int] = None) -> s
 def build_context_files_prompt(
     cwd: Optional[str] = None, skip_soul: bool = False, context_length: Optional[int] = None,
     allow_install_tree_fallback: bool = False, home_override: "Path | None" = None,
+    persona_home: "Path | None" = None,
 ) -> str:
     """Discover and load context files for the system prompt (each capped, see ``_get_context_file_max_chars``).
 
     Only ONE project context type loads, first found wins: .hermes.md/HERMES.md (walk to git root) →
     AGENTS.md chain (git root → cwd) → CLAUDE.md (cwd) → .cursorrules + .cursor/rules/*.mdc (cwd). SOUL.md
     from HERMES_HOME is independent and always included unless *skip_soul* (already the identity slot).
+
+    ``persona_home`` additionally loads that home's AGENTS.md family ahead of the project block — the
+    persona operating brief for messaging surfaces whose cwd is not HERMES_HOME.
     """
     cwd_path = Path(cwd if cwd is not None else os.getcwd()).resolve()
     # A FALLBACK-picked cwd inside the Hermes install tree must not gain system-prompt authority (the desktop
@@ -1593,6 +1617,10 @@ def build_context_files_prompt(
     else:
         sections = [_load_hermes_md(cwd_path, context_length) or _load_agents_md(cwd_path, context_length)
                     or _load_claude_md(cwd_path, context_length) or _load_cursorrules(cwd_path, context_length)]
+    if persona_home is not None:
+        persona_section = _load_persona_context(persona_home, context_length)
+        if persona_section:
+            sections.insert(0, persona_section)
     if not skip_soul:
         sections.append(load_soul_md(context_length, home_override=home_override))
     sections = [s for s in sections if s]

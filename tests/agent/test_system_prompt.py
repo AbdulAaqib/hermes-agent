@@ -43,7 +43,7 @@ def _captured_context_cwd(agent):
 
     def fake_context_files(
         cwd=None, skip_soul=False, context_length=None,
-        allow_install_tree_fallback=False, home_override=None,
+        allow_install_tree_fallback=False, home_override=None, persona_home=None,
     ):
         captured["cwd"] = cwd
         return ""

@@ -494,10 +494,30 @@ def _identity_parts(agent: Any, ctx_len: Optional[int]) -> Tuple[List[str], bool
     return ([_soul_content], True) if _soul_content else ([DEFAULT_AGENT_IDENTITY], False)
 
 
+_PERSONA_NON_CHAT_PLATFORMS = frozenset({
+    "", "cli", "tui", "acp", "curator", "api", "api_server", "desktop", "test", "debug",
+})
+
+
+def _persona_mode_active(agent: Any) -> bool:
+    """True on a messaging persona surface with ``agent.persona_mode`` enabled.
+
+    Persona mode suppresses the engineering discipline blocks (mandatory tool
+    use / act-don't-ask / verification / finish-the-job) that read as assistant
+    scaffolding inside a personal chat. Coding surfaces (cli/tui/acp/desktop)
+    keep them even when the flag is set.
+    """
+    if not bool(getattr(agent, "_persona_mode", False)):
+        return False
+    platform = str(getattr(agent, "platform", "") or "").strip().lower()
+    return platform not in _PERSONA_NON_CHAT_PLATFORMS
+
+
 def _guidance_parts(agent: Any) -> List[str]:
     """Universal + tool-aware + model-gated guidance blocks, each gated by its config.yaml key."""
     parts: List[str] = []
-    if agent.valid_tool_names:
+    persona = _persona_mode_active(agent)
+    if agent.valid_tool_names and not persona:
         parts += [
             text for flag, text in (
                 ("_task_completion_guidance", TASK_COMPLETION_GUIDANCE),
@@ -509,15 +529,18 @@ def _guidance_parts(agent: Any) -> List[str]:
         return parts
     # Steering only lands inside tool results, so only reachable with tools.
     parts.append(STEER_CHANNEL_NOTE)
-    # agent.tool_use_enforcement / agent.execution_guidance: "auto" (default)
-    # matches the hardcoded model lists; true/false force; a list gives custom
-    # model-name substrings.  Execution guidance is an independent gate so
-    # DeepSeek/Kimi/Qwen-class models get it even with enforcement off.
-    if _model_gate(agent._tool_use_enforcement, agent.model, TOOL_USE_ENFORCEMENT_MODELS):
-        parts.append(TOOL_USE_ENFORCEMENT_GUIDANCE)
-    if _model_gate(getattr(agent, "_execution_guidance", "auto"), agent.model, EXECUTION_GUIDANCE_MODELS):
-        from agent.prompt_builder import execution_guidance_text
-        parts.append(execution_guidance_text(agent.valid_tool_names))
+    # Persona mode: the tool-discipline blocks (mandatory tool use, act-don't-ask,
+    # verification) are engineering scaffolding, not persona. Skip them on chat.
+    if not persona:
+        # agent.tool_use_enforcement / agent.execution_guidance: "auto" (default)
+        # matches the hardcoded model lists; true/false force; a list gives custom
+        # model-name substrings.  Execution guidance is an independent gate so
+        # DeepSeek/Kimi/Qwen-class models get it even with enforcement off.
+        if _model_gate(agent._tool_use_enforcement, agent.model, TOOL_USE_ENFORCEMENT_MODELS):
+            parts.append(TOOL_USE_ENFORCEMENT_GUIDANCE)
+        if _model_gate(getattr(agent, "_execution_guidance", "auto"), agent.model, EXECUTION_GUIDANCE_MODELS):
+            from agent.prompt_builder import execution_guidance_text
+            parts.append(execution_guidance_text(agent.valid_tool_names))
     return parts
 
 
@@ -590,9 +613,14 @@ def _context_files_part(agent: Any, ctx_len: Optional[int], soul_loaded: bool) -
     if agent.skip_context_files:
         return []
     launch_artifact = getattr(agent, "_context_cwd_is_launch_artifact", False)
+    # Persona surfaces (Telegram etc.) run from Path.home() (the gateway's
+    # placeholder cwd), so the HERMES_HOME AGENTS.md persona rules were never
+    # discovered. Load it explicitly from the agent's own home.
+    persona_home = _agent_home(agent) if _persona_mode_active(agent) else None
     return [_pb.build_context_files_prompt(
         cwd=None if launch_artifact else resolve_context_cwd(), skip_soul=soul_loaded, context_length=ctx_len,
-        allow_install_tree_fallback=agent.platform in ("cli", "tui"), home_override=_agent_home(agent))]
+        allow_install_tree_fallback=agent.platform in ("cli", "tui"), home_override=_agent_home(agent),
+        persona_home=persona_home)]
 
 
 def _join_tier(parts: List[Optional[str]]) -> str:
